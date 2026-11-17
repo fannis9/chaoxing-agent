@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -61,6 +62,15 @@ assert.equal(manifest.items[0].index, 1);
 assert(existsSync(manifest.items[0].path));
 assert.equal(statSync(manifest.items[0].path).mode & 0o777, 0o600);
 assert(readFileSync(event.html,'utf8').includes('测试题干'));
+const answerPath = join(dir, 'reports', 'answer-' + event.report.match(/quiz-([a-f0-9]{16})\.json$/)[1] + '.json');
+writeFileSync(answerPath, JSON.stringify({schemaVersion:1,kind:'answer-proposal',status:'needs-review',
+  sourceHash:createHash('sha256').update(readFileSync(event.report)).digest('hex'), answers:[]}));
+const withAnswer = spawnSync(process.execPath,
+  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--once'],
+  {encoding:'utf8', timeout:30000, env:{...process.env, CX_PAGE_BRIDGE:mock,
+    CX_QUIZ_REPORT_DIR:join(dir,'reports'), MOCK_REPORT:''}});
+assert.equal(withAnswer.status, 0, withAnswer.stderr);
+assert.equal(JSON.parse(withAnswer.stdout.trim()).event, 'answer-proposal');
 console.log(JSON.stringify({event:event.event, questions:event.questionCount,
   report:event.report, preview:event.preview}));
 

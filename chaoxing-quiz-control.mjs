@@ -3,7 +3,7 @@
 // It prints one JSON event per newly reported quiz and writes private local artifacts.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -22,6 +22,7 @@ const SCHEDULE_STATUS = process.argv.includes('--schedule-status');
 let ownedTab = process.argv.find(arg => arg.startsWith('--tab='))?.slice(6) || '';
 const POLL_MS = Math.max(100, Number(process.env.CX_QUIZ_POLL_MS) || 5000);
 const seen = new Set();
+const seenAnswers = new Set();
 const pending = new Map();
 const monitorErrors = new Set();
 const runtimeErrors = new Set();
@@ -529,6 +530,26 @@ async function check() {
   return false;
 }
 
+function reportAnswers() {
+  if (!existsSync(OUT)) return;
+  for (const name of readdirSync(OUT).filter(value => /^answer-[a-f0-9]{16}\.json$/.test(value))) {
+    const path = join(OUT, name);
+    let answer;
+    try { answer = JSON.parse(readFileSync(path, 'utf8')); } catch { continue; }
+    if (answer?.schemaVersion !== 1 || answer.kind !== 'answer-proposal'
+        || !['ready', 'needs-review'].includes(answer.status) || !Array.isArray(answer.answers)) continue;
+    const report = join(OUT, `quiz-${name.slice(7)}`);
+    if (!existsSync(report)) continue;
+    const sourceHash = createHash('sha256').update(readFileSync(report)).digest('hex');
+    if (answer.sourceHash !== sourceHash) continue;
+    const key = `${path}:${sourceHash}`;
+    if (seenAnswers.has(key)) continue;
+    seenAnswers.add(key);
+    process.stdout.write(`${JSON.stringify({event:'answer-proposal', answer:path, report,
+      status:answer.status, count:answer.answers.length})}\n`);
+  }
+}
+
 async function main() {
   if (SCHEDULE_STATUS) {
     try { process.stdout.write(`${readFileSync(schedulePath, 'utf8')}\n`); }
@@ -540,14 +561,14 @@ async function main() {
     catch { process.stdout.write('{"status":"no-checkpoint"}\n'); }
     return;
   }
-  if (ONCE) { await check(); return; }
+  if (ONCE) { await check(); reportAnswers(); return; }
   if (RESUME) { await resumeStudy(); return; }
   claimController();
   process.stdout.write(`${JSON.stringify({event:'watching', controller})}\n`);
   if (START) await startStudy();
   let lastWatchError = '';
   while (true) {
-    try { await check(); lastWatchError = ''; }
+    try { await check(); reportAnswers(); lastWatchError = ''; }
     catch (error) {
       const message = String(error.message || error).slice(0, 500);
       if (message !== lastWatchError) {
