@@ -42,10 +42,11 @@ const report = {
   questions:[{index:1,type:'单选题',heading:'测试题干',fontObfuscated:false,
     options:[{label:'A',text:'选项甲'},{label:'B',text:'选项乙'}],images:[]}],
 };
+const reportWithFont = {...report, questions:[{...report.questions[0],fontObfuscated:true}]};
 const result = spawnSync(process.execPath,
   [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--once'],
   {encoding:'utf8', timeout:30000, env:{...process.env, CX_PAGE_BRIDGE:mock,
-    CX_QUIZ_REPORT_DIR:join(dir,'reports'), MOCK_REPORT:JSON.stringify(report)}});
+    CX_QUIZ_REPORT_DIR:join(dir,'reports'), MOCK_REPORT:JSON.stringify(reportWithFont)}});
 assert.equal(result.status, 0, result.stderr);
 const event = JSON.parse(result.stdout.trim());
 assert.equal(event.event, 'quiz');
@@ -53,6 +54,12 @@ assert.equal(event.questionCount, 1);
 assert(existsSync(event.report));
 assert(existsSync(event.html));
 assert(existsSync(event.preview));
+assert.equal(event.previewCount, 1);
+assert(existsSync(event.questionPreviews));
+const manifest = JSON.parse(readFileSync(event.questionPreviews, 'utf8'));
+assert.equal(manifest.items[0].index, 1);
+assert(existsSync(manifest.items[0].path));
+assert.equal(statSync(manifest.items[0].path).mode & 0o777, 0o600);
 assert(readFileSync(event.html,'utf8').includes('测试题干'));
 console.log(JSON.stringify({event:event.event, questions:event.questionCount,
   report:event.report, preview:event.preview}));

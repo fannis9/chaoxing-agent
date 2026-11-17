@@ -3,8 +3,8 @@
 // It prints one JSON event per newly reported quiz and writes private local artifacts.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
@@ -349,7 +349,7 @@ function reportHtml(report) {
     (questions || `<p>${escapeHtml(report.captureNote || '题目未加载，请查看原页面')}</p>`) + '</html>';
 }
 
-async function renderPreview(html, target) {
+async function renderPreview(html, target, report) {
   const {chromium} = require('playwright-core');
   const browser = await chromium.launch({executablePath:'/usr/bin/google-chrome', headless:true,
     args:['--no-sandbox', '--disable-background-networking', '--no-first-run']});
@@ -360,6 +360,26 @@ async function renderPreview(html, target) {
     await page.setContent(html, {waitUntil:'load'});
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({path:target, fullPage:true});
+    chmodSync(target, 0o600);
+    const previewDir = join(dirname(target), `${basename(target, '.png')}-questions`);
+    const items = [];
+    for (const [index, question] of (report.questions || []).entries()) {
+      if (!question.fontObfuscated && !question.images?.length) continue;
+      mkdirSync(previewDir, {recursive:true, mode:0o700});
+      const path = join(previewDir, `q${String(index + 1).padStart(3, '0')}.png`);
+      try {
+        await page.locator('section').nth(index).screenshot({path});
+        chmodSync(path, 0o600);
+        items.push({index:index + 1, path, status:'rendered',
+          captureIssues:question.captureIssues || []});
+      } catch (error) {
+        items.push({index:index + 1, status:'failed', reason:String(error.message || error).slice(0, 160)});
+      }
+    }
+    if (!items.length) return {manifest:'', count:0};
+    const manifest = join(previewDir, 'manifest.json');
+    atomicJson(manifest, {schemaVersion:1, reportId:report.id, items});
+    return {manifest, count:items.filter(item => item.status === 'rendered').length};
   } finally { await browser.close(); }
 }
 
@@ -492,10 +512,18 @@ async function check() {
     const html = reportHtml(report);
     writeFileSync(htmlPath, html, {mode:0o600});
     let preview = '';
-    try { await renderPreview(html, pngPath); preview = pngPath; }
+    let questionPreviews = '';
+    let previewCount = 0;
+    try {
+      const rendered = await renderPreview(html, pngPath, report);
+      preview = pngPath;
+      questionPreviews = rendered.manifest;
+      previewCount = rendered.count;
+    }
     catch (error) { process.stderr.write(`preview failed: ${error.message}\n`); }
     process.stdout.write(`${JSON.stringify({event:'quiz', tab, id:report.id,
-      questionCount:report.questionCount, report:jsonPath, html:htmlPath, preview})}\n`);
+      questionCount:report.questionCount, report:jsonPath, html:htmlPath, preview,
+      questionPreviews, previewCount})}\n`);
     return true;
   }
   return false;

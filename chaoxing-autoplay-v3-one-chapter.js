@@ -374,10 +374,24 @@
     let imageBudget = 2_000_000;
     const questions = doc ? [...doc.querySelectorAll('.TiMu.newTiMu')].slice(0, 100).map((node, index) => {
       const heading = node.querySelector('.Zy_TItle')?.innerText.trim() || '';
-      const options = [...node.querySelectorAll('.Zy_ulTop li')].map(option => ({
-        label: option.querySelector('.num_option')?.innerText.trim() || '',
-        text: option.innerText.replace(/^[A-Z]\s*/, '').trim().slice(0, 4000),
-      }));
+      const wrapper = node.closest('.singleQuesId');
+      const questionId = /^question(\d+)$/.exec(wrapper?.id || '')?.[1] || '';
+      const answerField = questionId ? wrapper?.querySelector(`#answer${questionId}`) : null;
+      const answerType = questionId
+        ? wrapper?.querySelector(`#answertype${questionId}`)?.value || '' : '';
+      const editors = [...(wrapper?.querySelectorAll('textarea[id]') || [])]
+        .filter(editor => /^answer(?:Editor)?\d+$/.test(editor.id))
+        .map(editor => ({id:editor.id,
+          name:/^answer(?:Editor)?\d+$/.test(editor.name || '') ? editor.name : ''}));
+      const blankCount = Number(wrapper?.querySelector('input[name^="tiankongsize"]')?.value || 0);
+      const options = [...node.querySelectorAll('.Zy_ulTop li')].map(option => {
+        const marker = option.querySelector('.num_option');
+        return {
+          label:marker?.innerText.trim() || '',
+          value:marker?.getAttribute('data') || '',
+          text:option.innerText.replace(/^[A-Z]\s*/, '').trim().slice(0, 4000),
+        };
+      });
       const images = [...node.querySelectorAll('img')].map(img => {
         try {
           const url = new URL(img.currentSrc || img.src, doc.baseURI);
@@ -400,12 +414,25 @@
             alt:img.alt || '', dataUrl};
         } catch { return null; }
       }).filter(Boolean);
+      const controlKind = options.length ? 'choice' : blankCount ? 'fill'
+        : editors.length ? 'editor' : 'unknown';
+      const captureIssues = [];
+      if (!questionId) captureIssues.push('question-id-missing');
+      if (controlKind === 'choice' && (!answerField?.id || options.some(option => !option.value)))
+        captureIssues.push('choice-mapping-incomplete');
+      if (controlKind === 'fill' && editors.length !== blankCount)
+        captureIssues.push('blank-editor-count-mismatch');
+      if (images.some(img => !img.dataUrl)) captureIssues.push('image-not-embedded');
       return {
         index:index + 1,
+        questionId,
         type:heading.match(/【([^】]+)】/)?.[1] || '',
         heading:heading.slice(0, 10000),
         text:node.innerText.trim().slice(0, 16000),
         options,
+        control:{kind:controlKind, answerType, answerFieldId:answerField?.id || '',
+          editors, blankCount:Number.isSafeInteger(blankCount) && blankCount > 0 ? blankCount : 0},
+        captureIssues,
         images,
         fontObfuscated:Boolean(node.querySelector('.font-cxsecret')),
       };
@@ -423,6 +450,9 @@
         if (fontDataUrl) break;
       }
     }
+    if (!fontDataUrl)
+      for (const question of questions)
+        if (question.fontObfuscated) question.captureIssues.push('font-unavailable');
     return {
       schemaVersion:1,
       kind:'quiz',

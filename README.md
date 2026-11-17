@@ -62,6 +62,8 @@ node chaoxing-quiz-control.mjs --schedule-status
 
 测验出现时，页面脚本进入 `waiting-quiz`，控制端在 `quiz-reports/` 生成 `quiz-*.json`、`.html` 和 `.png`，并在标准输出或 `controller.log` 打印事件。题目需在控制会话中处理。提交后，页面脚本会等待平台确认完成再继续；若页面已刷新，可在**完成提交之后**运行 `node chaoxing-quiz-control.mjs --resume --tab=<标签ID>`，它会核验原测验状态。不要在填写过程中执行恢复命令。
 
+题目 JSON 还包含 `questionId`、选项的 `value`、`control.kind`、答案字段 ID、编辑器 ID 与填空数量。这些字段用于以后把答案准确对应到原页面控件；`captureIssues` 标记缺失的控件映射、字体或图片。特殊字体题和图片题会在 `quiz-*-questions/` 生成逐题 PNG 与 `manifest.json`，事件中提供 `questionPreviews` 路径。逐题预览仍是本地文件，遇到跨域图片无法嵌入时会在报告中保留图片路径并标记问题。
+
 运行检查点在 `quiz-reports/runtime.json`，课程队列在 `schedule.json`，事件在 `events.jsonl`，异常在 `incident-*.json`。这些文件可能包含课程内容，默认不提交到 Git。浏览器内的 `sessionStorage['cx-v3-runtime']` 用于页面刷新恢复，但平台任务状态始终是完成与否的依据。
 
 ## 测试

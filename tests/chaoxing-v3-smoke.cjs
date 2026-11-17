@@ -165,9 +165,12 @@ const { chromium } = require('playwright-core');
     await quizPage.evaluate(() => {
       document.querySelectorAll('li[id^="dct"]').forEach(node => node.remove());
       document.body.insertAdjacentHTML('beforeend', `<form action="/submit?token=never-export-this">
-        <div class="TiMu newTiMu"><div class="Zy_TItle">1【单选题】测试题干</div>
-        <ul class="Zy_ulTop"><li><span class="num_option">A</span>选项甲</li>
-        <li><span class="num_option">B</span>选项乙</li></ul></div></form>`);
+        <div class="singleQuesId" id="question123" data="123"><div class="TiMu newTiMu">
+        <div class="Zy_TItle font-cxsecret">1【单选题】测试题干</div>
+        <ul class="Zy_ulTop"><li qid="123"><span class="num_option" name="answer123" data="A">A</span>选项甲</li>
+        <li qid="123"><span class="num_option" name="answer123" data="B">B</span>选项乙</li></ul>
+        <input type="hidden" id="answer123" name="answer123" value="">
+        <input type="hidden" id="answertype123" value="0"></div></div></form>`);
       window.AttachmentSetting = {attachments:[{jobid:'local-work', type:'workid', job:true}]};
     });
     await quizPage.evaluate(oneChapterScript);
@@ -177,6 +180,11 @@ const { chromium } = require('playwright-core');
       completed:window.__cxV3.completed.length}));
     assert.strictEqual(quiz.report.questionCount, 1);
     assert.strictEqual(quiz.report.questions[0].options.length, 2);
+    assert.strictEqual(quiz.report.questions[0].questionId, '123');
+    assert.strictEqual(quiz.report.questions[0].options[1].value, 'B');
+    assert.deepStrictEqual(quiz.report.questions[0].control,
+      {kind:'choice',answerType:'0',answerFieldId:'answer123',editors:[],blankCount:0});
+    assert(quiz.report.questions[0].captureIssues.includes('font-unavailable'));
     assert(!JSON.stringify(quiz.report).includes('never-export-this'));
     assert.deepStrictEqual({status:quiz.status, completed:quiz.completed}, {status:'waiting-quiz', completed:0});
     console.log(JSON.stringify({quizCase:{status:quiz.status, questions:quiz.report.questionCount,
@@ -193,6 +201,33 @@ const { chromium } = require('playwright-core');
       completed:window.__cxV3.completed.length, reportPresent:!!document.getElementById('cx-v3-quiz-report')}));
     assert.deepStrictEqual(resumed, {status:'limit', completed:1, reportPresent:false});
     console.log(JSON.stringify({resumedQuizCase:resumed}));
+
+    const controlsPage = await context.newPage();
+    await controlsPage.goto('https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=quiz-controls');
+    await controlsPage.evaluate(() => {
+      document.querySelectorAll('li[id^="dct"]').forEach(node => node.remove());
+      document.body.insertAdjacentHTML('beforeend', `<div class="singleQuesId" id="question456">
+        <div class="TiMu newTiMu"><div class="Zy_TItle">1【简答题】说明原因</div>
+        <textarea id="answer456" name="answer456"></textarea><input id="answertype456" value="4"></div></div>
+        <div class="singleQuesId" id="question789"><div class="TiMu newTiMu">
+        <div class="Zy_TItle">2【填空题】两个空</div>
+        <textarea id="answerEditor7891" name="answerEditor7891"></textarea>
+        <textarea id="answerEditor7892" name="answerEditor7892"></textarea>
+        <input name="tiankongsize789" value="2"><input id="answertype789" value="2"></div></div>`);
+      window.AttachmentSetting = {attachments:[{jobid:'controls-work', type:'workid', job:true}]};
+    });
+    await controlsPage.evaluate(oneChapterScript);
+    await controlsPage.waitForFunction(() => window.__cxV3?.status === 'waiting-quiz');
+    const controls = await controlsPage.evaluate(() =>
+      JSON.parse(document.getElementById('cx-v3-quiz-report').textContent).questions.map(q => q.control));
+    assert.equal(controls[0].kind, 'editor');
+    assert.deepStrictEqual(controls[0].editors.map(editor => editor.id), ['answer456']);
+    assert.equal(controls[1].kind, 'fill');
+    assert.equal(controls[1].blankCount, 2);
+    assert.deepStrictEqual(controls[1].editors.map(editor => editor.id),
+      ['answerEditor7891', 'answerEditor7892']);
+    await controlsPage.evaluate(() => window.__cxV3.stop());
+    console.log(JSON.stringify({quizControlsCase:controls.map(control => control.kind)}));
 
     const reloadedQuizPage = await context.newPage();
     await reloadedQuizPage.goto('https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=local-quiz-reloaded');
