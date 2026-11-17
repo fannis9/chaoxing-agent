@@ -31,9 +31,9 @@ const server = createServer(async (req, res) => {
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 
-async function run(extra = {}) {
+async function run(extra = {}, args = []) {
   const child = spawn(process.execPath,
-    [new URL('../chaoxing-answer-worker.mjs', import.meta.url).pathname, '--once'],
+    [new URL('../chaoxing-answer-worker.mjs', import.meta.url).pathname, '--once', ...args],
     {env:{...process.env, CX_QUIZ_REPORT_DIR:dir, CX_OPENAI_BASE_URL:`http://127.0.0.1:${server.address().port}/v1`,
       OPENAI_API_KEY:'test-only', ...extra}});
   let out = '', err = '';
@@ -61,6 +61,19 @@ try {
   assert.equal(repeat.code, 0, repeat.err);
   assert.equal(calls, 1, 'unchanged report should not call model twice');
 
+  const selected = await run({CX_ANSWER_MODEL:'env-model', CX_OPENAI_BASE_URL:'https://invalid.invalid/v1',
+    MY_TEST_API_KEY:'test-only', OPENAI_API_KEY:''},
+    ['--model=chosen-model', `--base-url=http://127.0.0.1:${server.address().port}/v1`,
+      '--api-key-env=MY_TEST_API_KEY']);
+  assert.equal(selected.code, 0, selected.err);
+  assert.equal(requestBody.model, 'chosen-model');
+  assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).model, 'chosen-model');
+  assert.equal(calls, 2, 'changing model should request a new answer');
+
+  const selectedRepeat = await run({CX_ANSWER_MODEL:'env-model'}, ['--model=chosen-model']);
+  assert.equal(selectedRepeat.code, 0, selectedRepeat.err);
+  assert.equal(calls, 2);
+
   report.questions[0].heading = '再次计算 1+1';
   writeFileSync(reportPath, JSON.stringify(report));
   invalid = true;
@@ -69,5 +82,5 @@ try {
   assert.match(rejected.err, /选项值无效/);
   assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).sourceHash, saved.sourceHash,
     'invalid model output must not replace a good answer');
-  console.log(JSON.stringify({worker:'verified', deduplicated:true, invalidRejected:true}));
+  console.log(JSON.stringify({worker:'verified', deduplicated:true, modelSelectable:true, invalidRejected:true}));
 } finally { await new Promise(resolve => server.close(resolve)); }

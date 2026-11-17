@@ -67,14 +67,16 @@ node chaoxing-quiz-control.mjs --schedule-status
 
 ## 独立答题工作进程
 
-在另一个终端设置 OpenAI API 密钥并启动：
+在另一个终端设置 API 密钥并选择模型：
 
 ```bash
 export OPENAI_API_KEY=你的密钥
-node chaoxing-answer-worker.mjs
+node chaoxing-answer-worker.mjs --model=gpt-6.1-sol
 ```
 
-默认模型是 `gpt-6.1-sol`，可用 `CX_ANSWER_MODEL` 指定。`CX_QUIZ_REPORT_DIR` 可指定与控制端共用的报告目录。只处理一次当前队列可加 `--once`；指定一个报告可用 `--once --report=/绝对路径/quiz-*.json`。首次运行会处理目录中尚无有效答案文件的报告。题目正文和已嵌入的图片会发送到模型接口；报告和结果都只保存在本地，输出文件权限为 `0600`。模型接口按 [OpenAI Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create) 的结构化输出格式调用。
+将 `--model=` 后的值换成你账号可用的模型 ID。省略时默认 `gpt-6.1-sol`；也可设 `CX_ANSWER_MODEL`。命令行参数优先于环境变量。其他支持 OpenAI Responses API 及 `json_schema` 结构化输出的服务，可用 `--base-url=https://服务地址/v1` 指定接口，再用 `--api-key-env=密钥变量名` 指定密钥所在的环境变量；`CX_OPENAI_BASE_URL` 和 `CX_ANSWER_API_KEY_ENV` 也可用。接口地址必须是 HTTPS，本机测试可用 HTTP。不同服务对图片输入和结构化输出的兼容程度需要分别验证。
+
+`CX_QUIZ_REPORT_DIR` 可指定与控制端共用的报告目录。只处理一次当前队列可加 `--once`；指定一个报告可用 `--once --report=/绝对路径/quiz-*.json`。首次运行会处理目录中尚无有效答案文件的报告。题目正文和已嵌入的图片会发送到选定模型接口；报告和结果都只保存在本地，输出文件权限为 `0600`。默认接口按 [OpenAI Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create) 的结构化输出格式调用。切换模型或接口后会重新生成答案，结果中记录 `model` 和接口指纹，便于核对。
 
 成功后生成 `quiz-reports/answer-*.json`。`status=ready` 表示映射检查通过；`status=needs-review` 表示题目缺字、缺图、缺控件或模型弃答。控制端会输出 `answer-proposal` 事件。答案文件目前供控制会话审核和手工填写；页面脚本仍会等待平台确认测验完成后继续。工作进程重启后不会重复请求未变化的报告；报告变化时会重新求解。接口失败或答案值不在题目选项中时，不覆盖已有结果，并在标准错误输出原因。
 

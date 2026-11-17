@@ -546,7 +546,7 @@ function reportAnswers() {
     if (seenAnswers.has(key)) continue;
     seenAnswers.add(key);
     process.stdout.write(`${JSON.stringify({event:'answer-proposal', answer:path, report,
-      status:answer.status, count:answer.answers.length})}\n`);
+      model:answer.model || '', status:answer.status, count:answer.answers.length})}\n`);
   }
 }
 
