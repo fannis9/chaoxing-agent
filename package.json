@@ -1,0 +1,13 @@
+{
+  "name": "chaoxing-pagebridge-controller",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "test": "node tests/chaoxing-v3-smoke.cjs && node tests/chaoxing-quiz-control-test.mjs && node tests/chaoxing-schedule-test.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

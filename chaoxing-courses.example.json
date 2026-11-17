@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "cpi": "000000000",
+  "courses": [
+    {
+      "key": "course_a",
+      "name": "示例课程 A",
+      "courseId": "111111111",
+      "clazzId": "111111111",
+      "firstChapterId": "111111111",
+      "finalChapterId": "111111112",
+      "expectedTasks": 2
+    },
+    {
+      "key": "course_b",
+      "name": "示例课程 B",
+      "courseId": "222222222",
+      "clazzId": "222222222",
+      "firstChapterId": "222222221",
+      "finalChapterId": "222222222",
+      "expectedTasks": 2
+    }
+  ]
+}
