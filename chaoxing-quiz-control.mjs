@@ -227,6 +227,12 @@ async function startStudy() {
     '--world', 'MAIN', '--tab', tab));
   if (!status.validPage) throw new Error('当前标签不是学习通章节页，拒绝注入');
   if (SCHEDULE) await loadSchedule(status.courseId);
+  if (status.report && !status.active) {
+    const stale = JSON.parse(await pageCommand('eval',
+      '(() => {const node=document.getElementById("cx-v3-quiz-report");try {const report=JSON.parse(node?.textContent||"null");if(report?.chapterId!==new URL(location.href).searchParams.get("chapterId")){node?.remove();return true}} catch {} return false})()',
+      '--world', 'MAIN', '--tab', tab));
+    if (stale) status.report = false;
+  }
   if (status.oldBox) throw new Error('检测到旧版脚本日志框；请先停止旧脚本并刷新页面');
   if (status.active || status.report) {
     process.stdout.write(`${JSON.stringify({event:'attached', tab, status:status.status})}\n`);
@@ -451,6 +457,13 @@ async function monitorPending(tab) {
     process.stdout.write(`${JSON.stringify({event:resumed ? 'resumed' : 'chapter-changed', tab,
       from:quiz.chapterId, to:status.chapterId, verified:resumed})}\n`);
     pending.delete(tab);
+    if (START && !status.v3Active && status.chapterId) {
+      await pageCommand('eval', 'document.getElementById("cx-v3-quiz-report")?.remove(); true',
+        '--world', 'MAIN', '--tab', tab);
+      await startStudy();
+      process.stdout.write(`${JSON.stringify({event:'recovered', tab,
+        chapterId:status.chapterId, reason:'chapter-changed'})}\n`);
+    }
     return;
   }
   if (status.v3Active && status.v3Status === 'waiting-quiz') return;
