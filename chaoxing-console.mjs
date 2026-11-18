@@ -20,6 +20,7 @@ if (state.mode === 'running' || state.mode === 'pausing') state.mode = 'stopped'
 let child = null;
 let stopping = false;
 let outputBuffer = '';
+let errorBuffer = '';
 const exec = promisify(execFile);
 
 function save() {
@@ -44,10 +45,17 @@ function launch() {
       try { const event = JSON.parse(line); state.event = event; save(); } catch {}
     }
   });
-  child.stderr.on('data', chunk => { state.error = String(chunk).slice(-500); save(); });
+  child.stderr.on('data', chunk => {
+    errorBuffer = (errorBuffer + String(chunk)).slice(-2000);
+    state.error = errorBuffer;
+    save();
+  });
   child.on('exit', code => {
     child = null;
-    if (!stopping) { state.mode = 'stopped'; state.error ||= `控制进程退出，代码 ${code}`; }
+    if (!stopping) {
+      state.mode = 'stopped';
+      state.error = `${errorBuffer || '控制进程退出'}（代码 ${code}）`.slice(-2000);
+    }
     stopping = false;
     save();
   });
@@ -99,7 +107,8 @@ async function modelCall(input) {
 }
 const server = createServer(async (request,response) => {
   const origin = request.headers.origin || '';
-  if (!allowedOrigin.test(origin) || request.headers['x-cx-console'] !== '1') {
+  if (!allowedOrigin.test(origin) ||
+      (request.method !== 'OPTIONS' && request.headers['x-cx-console'] !== '1')) {
     json(response,403,{error:'扩展来源无效'}); return;
   }
   response.setHeader('Access-Control-Allow-Origin',origin);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -14,6 +14,9 @@ writeFileSync(config, JSON.stringify({schemaVersion:1,cpi:'9',courses:[
 ]}));
 const mock = join(dir, 'page.mjs');
 writeFileSync(urlFile, 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=1002&courseId=111111');
+mkdirSync(out);
+writeFileSync(join(out,'schedule.json'),JSON.stringify({schemaVersion:1,tab:'old-tab',
+  index:0,status:'running',completed:[]}));
 writeFileSync(mock, `import {readFileSync,writeFileSync} from 'node:fs';
 const file = process.env.MOCK_URL_FILE;
 const url = () => readFileSync(file,'utf8');

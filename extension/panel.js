@@ -18,7 +18,7 @@ function renderConsole(state) {
   const mode = ({running:'运行中',paused:'已暂停',stopped:'已停止'})[state.mode] || state.mode;
   $('connection').textContent = `本机控制端已连接 · 队列${mode}${state.error ? `\n${state.error}` : ''}`;
   $('runSummary').textContent = state.mode === 'running'
-    ? `助手运行中 · ${state.event?.event || '等待任务'}` : `队列${mode}`;
+    ? `助手运行中 · ${events[state.event?.event] || state.event?.event || '等待任务'}` : `队列${mode}`;
   $('modelStatus').textContent = `${state.model.name || state.model.id} · ${state.keyConfigured ? '密钥已配置' : '密钥未配置'}`;
   for (const [id,value] of Object.entries({modelName:state.model.name,modelId:state.model.id,
     baseUrl:state.model.baseUrl,keyEnv:state.model.keyEnv})) {

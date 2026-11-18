@@ -46,7 +46,7 @@ function saveSchedule() {
   atomicJson(schedulePath, scheduleState);
 }
 
-function loadSchedule(courseId) {
+async function loadSchedule(courseId) {
   if (!SCHEDULE) return;
   if (courseConfig?.schemaVersion !== 1 || !Array.isArray(courseConfig.courses)
       || courseConfig.courses.length < 1) throw new Error('课程配置无效');
@@ -57,13 +57,17 @@ function loadSchedule(courseId) {
     scheduleState = {schemaVersion:1, tab:ownedTab, index, status:'running', completed:[]};
     saveSchedule();
   }
-  if (scheduleState.schemaVersion !== 1 || scheduleState.tab !== ownedTab
-      || !Number.isInteger(scheduleState.index)
+  if (scheduleState.schemaVersion !== 1 || !Number.isInteger(scheduleState.index)
       || !courseConfig.courses[scheduleState.index]) throw new Error('调度检查点与当前标签不符');
   if (scheduleState.status !== 'running')
     throw new Error(`调度状态为 ${scheduleState.status}，需检查 schedule.json 后再恢复`);
   const current = courseConfig.courses[scheduleState.index];
   if (current.courseId !== courseId) throw new Error('当前课程与调度检查点不符，需人工检查');
+  if (scheduleState.tab !== ownedTab) {
+    if (await tabUrl(scheduleState.tab)) throw new Error('原调度标签仍存在，拒绝切换到另一标签');
+    scheduleState.tab = ownedTab;
+    saveSchedule();
+  }
 }
 
 function currentCourse() { return courseConfig?.courses[scheduleState?.index]; }
@@ -222,7 +226,7 @@ async function startStudy() {
     '({oldBox:!!document.getElementById("cxlogbox"), active:window.__cxV3?.active || false, status:window.__cxV3?.status || "", report:!!document.getElementById("cx-v3-quiz-report"), courseId:new URL(location.href).searchParams.get("courseId") || "", validPage:/^mooc1(?:-[a-z0-9]+)?\\.chaoxing\\.com$/i.test(location.hostname) && /^\\/mycourse\\/studentstudy\\/?$/.test(location.pathname)})',
     '--world', 'MAIN', '--tab', tab));
   if (!status.validPage) throw new Error('当前标签不是学习通章节页，拒绝注入');
-  if (SCHEDULE) loadSchedule(status.courseId);
+  if (SCHEDULE) await loadSchedule(status.courseId);
   if (status.oldBox) throw new Error('检测到旧版脚本日志框；请先停止旧脚本并刷新页面');
   if (status.active || status.report) {
     process.stdout.write(`${JSON.stringify({event:'attached', tab, status:status.status})}\n`);
