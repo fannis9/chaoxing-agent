@@ -11,6 +11,7 @@ const dataDir = join(root, 'quiz-reports');
 const statePath = join(dataDir, 'console-state.json');
 const port = Number(process.env.CX_CONSOLE_PORT || 8788);
 const allowedOrigin = /^chrome-extension:\/\/[a-z]{32}$/;
+let sawExtensionRequest = false;
 const initial = {mode:'stopped', model:{name:'默认模型', id:process.env.CX_ANSWER_MODEL || '',
   baseUrl:process.env.CX_OPENAI_BASE_URL || '', keyEnv:process.env.CX_ANSWER_API_KEY_ENV || 'OPENAI_API_KEY'},
   messages:[], updatedAt:new Date().toISOString()};
@@ -107,12 +108,19 @@ async function modelCall(input) {
 }
 const server = createServer(async (request,response) => {
   const origin = request.headers.origin || '';
-  if (!allowedOrigin.test(origin) ||
+  if ((origin && !allowedOrigin.test(origin)) ||
+      (request.method === 'OPTIONS' && !origin) ||
       (request.method !== 'OPTIONS' && request.headers['x-cx-console'] !== '1')) {
     json(response,403,{error:'扩展来源无效'}); return;
   }
-  response.setHeader('Access-Control-Allow-Origin',origin);
-  response.setHeader('Vary','Origin');
+  if (!sawExtensionRequest && request.headers['x-cx-console'] === '1') {
+    sawExtensionRequest = true;
+    console.log('已接收控制台请求');
+  }
+  if (origin) {
+    response.setHeader('Access-Control-Allow-Origin',origin);
+    response.setHeader('Vary','Origin');
+  }
   response.setHeader('Access-Control-Allow-Headers','Content-Type, X-CX-Console');
   response.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');
   response.setHeader('Access-Control-Allow-Private-Network','true');
