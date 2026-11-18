@@ -60,7 +60,10 @@ function recordModelActivity(event) {
           needsReview:Boolean(proposal?.needsReview)};
       })};
     const prior = state.modelActivity.findIndex(item => item.key?.startsWith(keyPrefix));
-    if (prior >= 0) state.modelActivity[prior] = activity;
+    if (prior >= 0) {
+      if (state.modelActivity[prior].status === 'submitted') activity.status = 'submitted';
+      state.modelActivity[prior] = activity;
+    }
     else state.modelActivity.push(activity);
     state.modelActivity = state.modelActivity
       .sort((left,right) => String(left.at).localeCompare(String(right.at))).slice(-12);
