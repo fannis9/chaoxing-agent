@@ -9,4 +9,5 @@ h1{font-size:18px;margin:0}h2{font-size:13px;margin:0 0 8px;color:#52645e}
 section{background:white;border:1px solid #dfe8e2;border-radius:10px;padding:12px;margin:10px 0}
 #status,#quiz{white-space:pre-wrap}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;margin:0;font:12px/1.5 ui-monospace,monospace}
 .actions{display:flex;gap:8px;margin-top:14px}button{border:1px solid #b9ccc0;background:white;border-radius:7px;padding:8px 10px;cursor:pointer}
+.actions{flex-wrap:wrap}input,textarea{width:100%;font:inherit;padding:7px;border:1px solid #b9ccc0;border-radius:6px}label{display:block;margin-top:8px;color:#52645e}#conversation{max-height:260px;overflow:auto;white-space:pre-wrap}#conversation p{padding:8px;background:#f4f7f5;border-radius:6px}
 button:hover{background:#e9f6ee}#stop{color:#9d3d38;border-color:#e0bbb7}#message{min-height:20px;color:#52645e}

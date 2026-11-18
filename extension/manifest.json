@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "学习通任务控制台",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "在学习通页面显示当前任务状态与日志。",
   "minimum_chrome_version": "114",
   "permissions": ["sidePanel", "tabs", "scripting"],
-  "host_permissions": ["https://chaoxing.com/*", "https://*.chaoxing.com/*"],
+  "host_permissions": ["https://chaoxing.com/*", "https://*.chaoxing.com/*", "http://127.0.0.1:8788/*"],
   "background": {"service_worker": "background.js"},
   "action": {"default_title": "打开学习通控制台"}
 }

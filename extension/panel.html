@@ -8,10 +8,19 @@
   <header><h1>学习通控制台</h1><span id="pulse" aria-label="刷新状态"></span></header>
   <p id="page">正在读取页面…</p>
   <p id="chapter"></p>
+  <section><h2>连接与运行</h2><div id="connection">正在连接本机控制端…</div>
+    <div class="actions"><button id="start">启动</button><button id="pause">暂停</button><button id="resume">继续</button><button id="stopAll">停止队列</button></div></section>
   <section><h2>当前任务</h2><div id="status">等待页面状态</div></section>
   <section><h2>自动流程</h2><div id="automatic">等待调度器</div></section>
   <section><h2>测验</h2><div id="quiz">当前没有待处理测验</div></section>
   <section><h2>最近日志</h2><pre id="log">暂无日志</pre></section>
+  <section><h2>模型配置</h2><div id="modelStatus">正在读取…</div>
+    <label>模型名称<input id="modelName"></label><label>模型 ID<input id="modelId"></label>
+    <label>API 基础地址<input id="baseUrl"></label><label>密钥环境变量<input id="keyEnv"></label>
+    <div class="actions"><button id="saveModel">保存配置</button><button id="testModel">测试连接</button></div></section>
+  <section><h2>模型对话</h2><div id="conversation"></div>
+    <textarea id="prompt" rows="3" placeholder="输入消息"></textarea>
+    <div class="actions"><button id="send">发送</button><button id="clearChat">新对话</button></div></section>
   <div class="actions"><button id="refresh">刷新</button><button id="stop">停止本页脚本</button></div>
   <p id="message" role="status"></p>
 </main>

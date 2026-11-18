@@ -1,6 +1,42 @@
 const $ = id => document.getElementById(id);
 let activeTab = null;
 let requestId = 0;
+let consoleState = null;
+const controlUrl = 'http://127.0.0.1:8788';
+async function control(path, data) {
+  const response = await fetch(`${controlUrl}${path}`, {
+    method:data ? 'POST' : 'GET',
+    headers:{'X-CX-Console':'1','Content-Type':'application/json'},
+    body:data ? JSON.stringify(data) : undefined,
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+  return result;
+}
+function renderConsole(state) {
+  consoleState = state;
+  $('connection').textContent = `本机控制端已连接 · 队列${({running:'运行中',paused:'已暂停',stopped:'已停止'})[state.mode] || state.mode}\n${state.error || ''}`;
+  $('modelStatus').textContent = `${state.model.name || state.model.id} · ${state.keyConfigured ? '密钥已配置' : '密钥未配置'}`;
+  for (const [id,value] of Object.entries({modelName:state.model.name,modelId:state.model.id,
+    baseUrl:state.model.baseUrl,keyEnv:state.model.keyEnv})) {
+    if (document.activeElement !== $(id)) $(id).value = value || '';
+  }
+  $('start').disabled = state.mode === 'running';
+  $('resume').disabled = state.mode !== 'paused';
+  $('pause').disabled = state.mode !== 'running';
+  $('stopAll').disabled = state.mode === 'stopped';
+  const conversation = $('conversation');
+  conversation.replaceChildren();
+  for (const message of state.messages || []) {
+    const row = document.createElement('p');
+    row.textContent = `${message.role === 'user' ? '你' : state.model.name || '模型'}：${message.text}`;
+    conversation.append(row);
+  }
+}
+async function refreshConsole() {
+  try { renderConsole(await control('/status')); }
+  catch (error) { $('connection').textContent = `本机控制端未连接 · ${error.message}`; }
+}
 
 function isChaoxing(url) {
   try {
@@ -101,3 +137,44 @@ chrome.tabs.onActivated.addListener(() => void refresh());
 chrome.tabs.onUpdated.addListener((_id,info) => {if(info.status==='complete') void refresh();});
 void refresh();
 setInterval(() => void refresh(), 3000);
+void refreshConsole();
+setInterval(() => void refreshConsole(), 3000);
+for (const action of ['start','pause','resume','stopAll']) {
+  $(action).addEventListener('click', async () => {
+    try {
+      await control('/control',{action:action === 'stopAll' ? 'stop' : action});
+      $('message').textContent = '操作已执行';
+      await refreshConsole();
+    } catch (error) { $('message').textContent = error.message; }
+  });
+}
+$('saveModel').addEventListener('click', async () => {
+  try {
+    await control('/model',{name:$('modelName').value,id:$('modelId').value,
+      baseUrl:$('baseUrl').value,keyEnv:$('keyEnv').value});
+    $('message').textContent = '模型配置已保存';
+    await refreshConsole();
+  } catch (error) { $('message').textContent = error.message; }
+});
+$('testModel').addEventListener('click', async () => {
+  $('message').textContent = '正在测试模型…';
+  try { const result = await control('/test-model',{}); $('message').textContent = result.ok ? '模型连接成功' : '模型未返回内容'; }
+  catch (error) { $('message').textContent = error.message; }
+});
+$('send').addEventListener('click', async () => {
+  const text = $('prompt').value.trim();
+  if (!text) return;
+  $('send').disabled = true;
+  $('message').textContent = '模型正在回复…';
+  try {
+    await control('/chat',{text});
+    $('prompt').value = '';
+    $('message').textContent = '回复完成';
+    await refreshConsole();
+  } catch (error) { $('message').textContent = error.message; }
+  finally { $('send').disabled = false; }
+});
+$('clearChat').addEventListener('click', async () => {
+  try { await control('/clear-chat',{}); await refreshConsole(); }
+  catch (error) { $('message').textContent = error.message; }
+});
