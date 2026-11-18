@@ -47,9 +47,12 @@ vm.runInNewContext(fs.readFileSync(path.join(dir,'background.js'),'utf8'),{chrom
 })();
 async function testPanelReadsExistingTab() {
   const elements = new Map();
+  const node = () => ({textContent:'',children:[],
+    append(...items) {this.children.push(...items);},
+    replaceChildren() {this.children=[];},
+    classList:{toggle:() => {},remove:() => {}},addEventListener:() => {}});
   const element = id => {
-    if (!elements.has(id)) elements.set(id,{textContent:'',classList:{toggle:() => {},remove:() => {}},
-      addEventListener:() => {},replaceChildren:() => {},append:() => {}});
+    if (!elements.has(id)) elements.set(id,node());
     return elements.get(id);
   };
   const calls=[];
@@ -66,10 +69,12 @@ async function testPanelReadsExistingTab() {
     }},
   };
   vm.runInNewContext(fs.readFileSync(path.join(dir,'panel.js'),'utf8'),
-    {chrome:panelChrome,document:{getElementById:element},URL,snapshotPage:() => {},
+    {chrome:panelChrome,document:{getElementById:element,createElement:node},URL,snapshotPage:() => {},
       setInterval:() => {},AbortSignal,fetch:async () => ({ok:true,json:async () => ({mode:'running',
         model:{name:'DeepSeek',id:'deepseek-flash',baseUrl:'https://api.deepseek.com',keyEnv:'DEEPSEEK_API_KEY'},
-        keyConfigured:true,messages:[]})})});
+        keyConfigured:true,messages:[],modelActivity:[{at:'2026-11-18T11:21:21Z',title:'章节测验',
+          model:'deepseek-flash',status:'needs-review',questions:[{index:2,text:'示意图题',answer:'',
+            explanation:'缺少示意图'}]}]})})});
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(calls[0].target.tabId,12);
   assert.match(element('chapter').textContent,/7\.1 可逆电池/);
@@ -78,6 +83,8 @@ async function testPanelReadsExistingTab() {
   assert.equal(element('videoProgress').value,25);
   assert.match(element('modelStatus').textContent,/DeepSeek/);
   assert.equal(element('modelId').value,'deepseek-flash');
+  assert.match(element('conversation').children[0].children[0].textContent,/自动答题/);
+  assert.match(element('conversation').children[0].children[1].textContent,/缺少示意图/);
 }
 (async () => {
   await testPanelReadsExistingTab();

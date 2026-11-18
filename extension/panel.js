@@ -33,6 +33,19 @@ function renderConsole(state) {
   $('send').disabled = false;
   const conversation = $('conversation');
   conversation.replaceChildren();
+  for (const activity of (state.modelActivity || []).slice()
+      .sort((left,right) => String(right.at).localeCompare(String(left.at)))) {
+    const group = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = `自动答题 · ${activity.title} · ${activity.model} · ${activity.status === 'ready' ? '可填写' : '需复核'}`;
+    group.append(summary);
+    for (const question of activity.questions || []) {
+      const row = document.createElement('p');
+      row.textContent = `第 ${question.index} 题 ${question.text}\n模型答案：${question.answer || '未作答'}\n${question.explanation}`;
+      group.append(row);
+    }
+    conversation.append(group);
+  }
   for (const message of state.messages || []) {
     const row = document.createElement('p');
     row.textContent = `${message.role === 'user' ? '你' : state.model.name || '模型'}：${message.text}`;
@@ -119,8 +132,10 @@ function render(data) {
   $('automatic').textContent = auto
     ? `${auto.chapterId && data.chapterId && auto.chapterId !== data.chapterId ? '上一章节 · ' : ''}${events[auto.event] || auto.event || '调度事件'}${auto.status ? ` · ${statuses[auto.status] || auto.status}` : ''}${auto.reason ? `\n${auto.reason}` : ''}`
     : '尚无自动调度事件';
+  const quizIssue = consoleState?.lastQuizIssue?.chapterId === data.chapterId
+    ? consoleState.lastQuizIssue.reason : '';
   $('quiz').textContent = data.quiz && currentRuntime
-    ? `${data.quiz.title} · ${data.quiz.questionCount} 题 · 等待处理`
+    ? `${data.quiz.title} · ${data.quiz.questionCount} 题${quizIssue ? `\n${quizIssue}` : ' · 等待处理'}`
     : '当前没有待处理测验';
   $('log').textContent = runtime?.lastLog?.join('\n') || data.visibleLog || '暂无日志';
   $('pulse').classList.toggle('live', Boolean(runtime?.active && runtime.source === 'live'));

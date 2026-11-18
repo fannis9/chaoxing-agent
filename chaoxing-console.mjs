@@ -2,7 +2,7 @@
 import {createServer} from 'node:http';
 import {spawn, execFile} from 'node:child_process';
 import {readFileSync, writeFileSync, existsSync, mkdirSync} from 'node:fs';
-import {dirname, join} from 'node:path';
+import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
 
@@ -14,7 +14,7 @@ const allowedOrigin = /^chrome-extension:\/\/[a-z]{32}$/;
 let sawExtensionRequest = false;
 const initial = {mode:'stopped', model:{name:'默认模型', id:process.env.CX_ANSWER_MODEL || '',
   baseUrl:process.env.CX_OPENAI_BASE_URL || '', keyEnv:process.env.CX_ANSWER_API_KEY_ENV || 'OPENAI_API_KEY'},
-  messages:[], updatedAt:new Date().toISOString()};
+  messages:[], modelActivity:[], updatedAt:new Date().toISOString()};
 let state = initial;
 try { state = {...initial, ...JSON.parse(readFileSync(statePath, 'utf8'))}; } catch {}
 if (state.mode === 'running' || state.mode === 'pausing') state.mode = 'stopped';
@@ -28,6 +28,33 @@ function save() {
   mkdirSync(dataDir, {recursive:true, mode:0o700});
   state.updatedAt = new Date().toISOString();
   writeFileSync(statePath, JSON.stringify(state, null, 2), {mode:0o600});
+}
+function recordModelActivity(event) {
+  const answerPath = resolve(String(event.answer || ''));
+  const reportPath = resolve(String(event.report || ''));
+  if (dirname(answerPath) !== dataDir || dirname(reportPath) !== dataDir ||
+      !/^answer-[a-f0-9]{16}\.json$/.test(basename(answerPath)) ||
+      !/^quiz-[a-f0-9]{16}\.json$/.test(basename(reportPath))) return;
+  try {
+    const answer = JSON.parse(readFileSync(answerPath, 'utf8'));
+    const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+    if (answer.reportId !== report.id || !Array.isArray(report.questions) ||
+        !Array.isArray(answer.answers)) return;
+    const key = `${answer.reportId}:${answer.sourceHash}:${answer.model}`;
+    if (state.modelActivity.some(item => item.key === key)) return;
+    state.modelActivity.push({key, at:answer.createdAt, model:answer.model,
+      title:report.title || '章节测验', chapterId:report.chapterId,
+      status:answer.status, questions:report.questions.map(question => {
+        const proposal = answer.answers.find(item => item.index === question.index);
+        return {index:question.index, text:String(question.text || '').slice(0,600),
+          answer:proposal?.answerValues?.join('、') || '',
+          explanation:String(proposal?.explanation || '').slice(0,600),
+          needsReview:Boolean(proposal?.needsReview)};
+      })});
+    state.modelActivity = state.modelActivity
+      .sort((left,right) => String(left.at).localeCompare(String(right.at))).slice(-12);
+    save();
+  } catch { /* report may be replaced during write */ }
 }
 function launch() {
   if (child) return;
@@ -43,7 +70,17 @@ function launch() {
     const lines = outputBuffer.split('\n');
     outputBuffer = lines.pop();
     for (const line of lines) {
-      try { const event = JSON.parse(line); state.event = event; save(); } catch {}
+      try {
+        const event = JSON.parse(line);
+        state.event = event;
+        if (event.event === 'needs-review' && event.chapterId)
+          state.lastQuizIssue = {chapterId:event.chapterId, reason:event.reason || ''};
+        if (event.event === 'quiz-submitted' ||
+            (event.event === 'progress' && state.lastQuizIssue?.chapterId !== event.chapterId))
+          state.lastQuizIssue = null;
+        if (event.event === 'answer-proposal') recordModelActivity(event);
+        save();
+      } catch {}
     }
   });
   child.stderr.on('data', chunk => {

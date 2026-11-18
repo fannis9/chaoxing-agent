@@ -35,7 +35,8 @@ function snapshotPage() {
         duration:Number(runtime.video.duration) || 0, rate:Number(runtime.video.rate) || 1},
       source:live ? 'live' : 'checkpoint',
     },
-    quiz:report && {title:report.title || '章节测验', questionCount:report.questionCount || 0},
+    quiz:report && {title:report.title || '章节测验', questionCount:report.questionCount || 0,
+      chapterId:report.chapterId || ''},
     automatic,
     visibleLog:clean(document.getElementById('cx-v3-logbox')?.innerText).slice(-3000),
   };

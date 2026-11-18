@@ -145,8 +145,9 @@ async function handleQuiz(event) {
   const key = `${event.tab}:${event.id}`;
   if (handled.has(key) || busy.has(key)) return;
   busy.add(key);
+  let report;
   try {
-    const report = JSON.parse(readFileSync(event.report, 'utf8'));
+    report = JSON.parse(readFileSync(event.report, 'utf8'));
     await child('chaoxing-answer-worker.mjs', ['--once', `--report=${event.report}`]);
     const answer = join(dirname(event.report), `answer-${event.report.match(/quiz-([a-f0-9]{16})\.json$/)?.[1]}.json`);
     const proposal = JSON.parse(readFileSync(answer, 'utf8'));
@@ -170,7 +171,8 @@ async function handleQuiz(event) {
       setTimeout(() => { if (!stopped) void handleQuiz(event); }, 30000);
     } else {
       handled.add(key);
-      emit({event:'needs-review', tab:event.tab, id:event.id, reason:reason.slice(0,500)});
+      emit({event:'needs-review', tab:event.tab, id:event.id,
+        chapterId:report?.chapterId || '', reason:reason.slice(0,500)});
     }
   } finally { busy.delete(key); }
 }
