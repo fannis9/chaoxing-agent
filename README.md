@@ -2,7 +2,19 @@
 
 基于 [PageBridge](https://github.com/fannis9/pagebridge) 控制同一个已登录的 Chrome 标签，串行处理学习通章节任务，并将测验交给当前控制会话处理。项目包含页面脚本、监听控制端、跨课程队列和只读长时监测工具。
 
-> 当前版本会**报告测验并等待**。独立答题工作进程可生成 AI 答案建议，页面填答器可在核对后填写当前测验。提交仍由当前控制会话处理。验证码、登录验证、未知任务和状态冲突也会暂停。页面结构可能变化；请先在自己的授权环境中测试。
+> 手动模式会报告测验并等待。自动模式能完成答题、填写和提交；验证码、登录验证、未知任务和状态冲突会暂停。页面结构可能变化；请先在自己的授权环境中测试。
+
+## 登录后自动运行
+
+一次性准备 `chaoxing-courses.json`（可从 `chaoxing-courses.example.json` 复制）和 `.env`（可从 `.env.example` 复制）。在 `.env` 填入自己的模型接口、模型 ID、密钥变量及 PageBridge 路径。DeepSeek 当前的 Responses API 地址是 `https://api.deepseek.com`，图像题可选 `deepseek-flash`；配置示例已填好非密钥字段。曾在聊天中发送过的密钥应吊销并换新。
+
+```bash
+node --env-file=.env chaoxing-auto.mjs
+```
+
+进程会等待登录，发现唯一的学习通标签后按课程配置进入章节，启动课程控制端。遇到测验时依次调用答题进程、页面填答器和页面提交控件；只有所有题目都有可用答案、填写全部确认后才提交，并等待平台确认完成。任何题目需复核、页面结构不符、模型接口失败或平台不确认时，写入 `quiz-reports/auto-events.jsonl` 并停在该测验。`--tab=<标签ID>` 可指定标签。首次配置课程、模型与 PageBridge 授权后，日常只需保持此进程运行并登录学习通。
+
+若希望电脑登录后自动启动此进程，可将 `chaoxing-auto.service.example` 中的仓库绝对路径替换为本机路径，安装为用户级 systemd 服务。服务会等待学习通登录，不会保存学习通密码。
 
 ## 架构
 
@@ -19,6 +31,7 @@ flowchart LR
 - **控制端** [`chaoxing-quiz-control.mjs`](chaoxing-quiz-control.mjs)：通过 PageBridge 读取页面状态、保存题目 JSON/HTML/PNG、意外刷新后重注入、记录异常，并报告答题工作进程的结果。
 - **答题工作进程** [`chaoxing-answer-worker.mjs`](chaoxing-answer-worker.mjs)：独立扫描本地测验报告，调用 OpenAI Responses API，校验题目 ID 和答案格式，再写入本地答案建议文件。它不连接浏览器，也不提交测验。
 - **页面填答器** [`chaoxing-page-filler.mjs`](chaoxing-page-filler.mjs)：经 PageBridge 核对课程、章节、测验和题目控件，将已确认可填的答案写入原页面，并生成本地填写记录。
+- **自动调度器** [`chaoxing-auto.mjs`](chaoxing-auto.mjs)：登录后发现课程，串行运行控制端、模型答题、页面填写与提交；遇到不确定状态停下并记录。
 - **调度器**：控制端在当前课程最后任务章节停下，打开课程目录核对「已完成任务点」总数；核对成功才在同一标签进入下一门课。队列只按一门一门执行。
 - **后台启动器** [`chaoxing-controller-daemon.mjs`](chaoxing-controller-daemon.mjs)：让控制端脱离交互终端继续运行。
 

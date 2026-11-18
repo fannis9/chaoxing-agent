@@ -7,6 +7,7 @@ chaoxing-courses.json
 *.png
 .env
 .env.*
+!.env.example
 data.json
 progress.json
 run.js
