@@ -73,8 +73,8 @@ async function testPanelReadsExistingTab() {
       setInterval:() => {},AbortSignal,fetch:async () => ({ok:true,json:async () => ({mode:'running',
         model:{name:'DeepSeek',id:'deepseek-flash',baseUrl:'https://api.deepseek.com',keyEnv:'DEEPSEEK_API_KEY'},
         keyConfigured:true,messages:[],modelActivity:[{at:'2026-11-18T11:21:21Z',title:'章节测验',
-          model:'deepseek-flash',status:'needs-review',questions:[{index:2,text:'示意图题',answer:'',
-            explanation:'缺少示意图'}]}]})})});
+          model:'deepseek-flash',status:'submitted',questions:[{index:2,text:'示意图题',answer:'B',
+            explanation:'按坏题规则随机选择'}]}]})})});
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(calls[0].target.tabId,12);
   assert.match(element('chapter').textContent,/7\.1 可逆电池/);
@@ -84,7 +84,8 @@ async function testPanelReadsExistingTab() {
   assert.match(element('modelStatus').textContent,/DeepSeek/);
   assert.equal(element('modelId').value,'deepseek-flash');
   assert.match(element('conversation').children[0].children[0].textContent,/自动答题/);
-  assert.match(element('conversation').children[0].children[1].textContent,/缺少示意图/);
+  assert.match(element('conversation').children[0].children[0].textContent,/已提交/);
+  assert.match(element('conversation').children[0].children[1].textContent,/按坏题规则随机选择/);
 }
 (async () => {
   await testPanelReadsExistingTab();

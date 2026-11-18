@@ -37,7 +37,9 @@ function renderConsole(state) {
       .sort((left,right) => String(right.at).localeCompare(String(left.at)))) {
     const group = document.createElement('details');
     const summary = document.createElement('summary');
-    summary.textContent = `自动答题 · ${activity.title} · ${activity.model} · ${activity.status === 'ready' ? '可填写' : '需复核'}`;
+    const status = {ready:'可填写', submitted:'已提交', 'needs-review':'需复核'}[activity.status]
+      || activity.status || '状态未知';
+    summary.textContent = `自动答题 · ${activity.title} · ${activity.model} · ${status}`;
     group.append(summary);
     for (const question of activity.questions || []) {
       const row = document.createElement('p');

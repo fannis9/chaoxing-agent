@@ -16,6 +16,7 @@ writeFileSync(reportPath, JSON.stringify(report));
 let calls = 0;
 let requestBody;
 let invalid = false;
+let missingFigure = false;
 const server = createServer(async (req, res) => {
   calls++;
   assert.equal(req.url, '/v1/responses');
@@ -23,8 +24,8 @@ const server = createServer(async (req, res) => {
   let raw = '';
   for await (const chunk of req) raw += chunk;
   requestBody = JSON.parse(raw);
-  const answers = {answers:[{index:1, questionId:'123', answerValues:[invalid ? 'C' : 'B'],
-    confidence:'high', explanation:'1+1=2'}]};
+  const answers = {answers:[{index:1, questionId:'123', answerValues:missingFigure ? [] : [invalid ? 'C' : 'B'],
+    confidence:missingFigure ? 'unknown' : 'high', explanation:missingFigure ? '示意图缺失' : '1+1=2'}]};
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({id:'resp_test', status:'completed',
     output:[{type:'message', content:[{type:'output_text', text:JSON.stringify(answers)}]}]}));
@@ -82,5 +83,36 @@ try {
   assert.match(rejected.err, /选项值无效/);
   assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).sourceHash, saved.sourceHash,
     'invalid model output must not replace a good answer');
+  invalid = false;
+  missingFigure = true;
+  report.questions[0].heading = '根据下图判断曲线1～4';
+  report.questions[0].text = '根据下图判断曲线1～4，示意图未显示';
+  writeFileSync(reportPath, JSON.stringify(report));
+  const guessed = await run();
+  assert.equal(guessed.code, 0, guessed.err);
+  const proposal = JSON.parse(readFileSync(answerPath, 'utf8'));
+  assert.equal(proposal.status, 'ready');
+  assert.equal(proposal.answerPolicyVersion, 4);
+  assert.equal(proposal.answers[0].fallback, 'unresolved-choice-random');
+  assert(['A','B'].includes(proposal.answers[0].answerValues[0]));
+  report.questions[0].heading = '缺少信息，但没有引用图片';
+  report.questions[0].text = '无法确定答案';
+  writeFileSync(reportPath, JSON.stringify(report));
+  const unknown = await run();
+  assert.equal(unknown.code, 0, unknown.err);
+  assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).status, 'ready');
+  missingFigure = false;
+  report.questions[0].captureIssues = ['image-not-embedded'];
+  writeFileSync(reportPath, JSON.stringify(report));
+  const candidate = await run();
+  assert.equal(candidate.code, 0, candidate.err);
+  assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).answers[0].fallback,
+    'unresolved-choice-model-value');
+  report.questions[0].control = {kind:'editor',editors:[{id:'answerEditor123'}]};
+  report.questions[0].options = [];
+  writeFileSync(reportPath, JSON.stringify(report));
+  const nonChoice = await run();
+  assert.equal(nonChoice.code, 0, nonChoice.err);
+  assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).status, 'needs-review');
   console.log(JSON.stringify({worker:'verified', deduplicated:true, modelSelectable:true, invalidRejected:true}));
 } finally { await new Promise(resolve => server.close(resolve)); }

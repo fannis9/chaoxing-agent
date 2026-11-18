@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Independent quiz answer worker. Reads local reports; never controls the browser.
-import {createHash} from 'node:crypto';
+import {createHash, randomInt} from 'node:crypto';
 import {existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync} from 'node:fs';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -13,6 +13,7 @@ const KEY_ENV = option('api-key-env') || process.env.CX_ANSWER_API_KEY_ENV || 'O
 const POLL_MS = Math.max(1000, Number(process.env.CX_ANSWER_POLL_MS) || 5000);
 const ONCE = process.argv.includes('--once');
 const reportArg = option('report');
+const ANSWER_POLICY_VERSION = 4;
 
 const schema = {type:'object', additionalProperties:false, required:['answers'], properties:{
   answers:{type:'array', items:{type:'object', additionalProperties:false,
@@ -87,8 +88,25 @@ function validateAnswers(report, parsed) {
     if (!Array.isArray(answer.answerValues) || !answer.answerValues.every(v => typeof v === 'string' && v.length <= 4000)
         || !['high','medium','low','unknown'].includes(answer.confidence)
         || typeof answer.explanation !== 'string') throw new Error(`答案格式错误：${answer.index}`);
-    const values = answer.answerValues;
+    let values = answer.answerValues;
     const kind = q.control?.kind || 'unknown';
+    let fallback = '';
+    if (kind === 'choice'
+        && /单选|判断/.test(q.type || '')
+        && q.questionId && q.control?.answerFieldId
+        && !(q.captureIssues || []).some(issue =>
+          issue === 'choice-mapping-incomplete' || issue === 'question-id-missing')) {
+      const options = (q.options || []).map(option => option.value)
+        .filter(value => typeof value === 'string' && value.length > 0);
+      if (options.length >= 2 && options.length <= 6 && new Set(options).size === options.length) {
+        if (!values.length) {
+          values = [options[randomInt(options.length)]];
+          fallback = 'unresolved-choice-random';
+        } else if (answer.confidence === 'unknown' || (q.captureIssues || []).length) {
+          fallback = 'unresolved-choice-model-value';
+        }
+      }
+    }
     if (kind === 'choice' && values.some(v => !(q.options || []).some(o => o.value === v)))
       throw new Error(`选项值无效：${answer.index}`);
     if (kind === 'choice' && /单选|判断/.test(q.type || '') && values.length > 1)
@@ -96,10 +114,12 @@ function validateAnswers(report, parsed) {
     if (kind === 'fill' && values.length && values.length !== q.control.blankCount)
       throw new Error(`填空数量错误：${answer.index}`);
     if (kind === 'editor' && values.length > 1) throw new Error(`简答数量错误：${answer.index}`);
-    const needsReview = !values.length || answer.confidence === 'unknown'
-      || (q.captureIssues || []).length > 0 || kind === 'unknown';
+    const needsReview = !values.length || (answer.confidence === 'unknown' && !fallback)
+      || ((q.captureIssues || []).length > 0 && !fallback) || kind === 'unknown';
     return {index:answer.index, questionId:answer.questionId, answerValues:values,
-      confidence:answer.confidence, explanation:answer.explanation.slice(0, 4000), needsReview};
+      confidence:fallback ? 'low' : answer.confidence,
+      explanation:fallback ? `${answer.explanation.slice(0, 3500)} 已按坏题规则${fallback === 'unresolved-choice-random' ? '随机选择' : '采用模型候选'} ${values[0]}。`
+        : answer.explanation.slice(0, 4000), needsReview, fallback};
   });
 }
 
@@ -136,12 +156,14 @@ async function processReport(path) {
   if (existsSync(target)) {
     try {
       const prior = JSON.parse(readFileSync(target, 'utf8'));
-      if (prior.sourceHash === hash && prior.model === MODEL && prior.endpointHash === endpointHash()) return false;
+      if (prior.sourceHash === hash && prior.model === MODEL && prior.endpointHash === endpointHash()
+          && prior.answerPolicyVersion === ANSWER_POLICY_VERSION) return false;
     }
     catch { /* regenerate */ }
   }
   const result = await askModel(report);
-  const output = {schemaVersion:1, kind:'answer-proposal', reportId:report.id,
+  const output = {schemaVersion:1, kind:'answer-proposal', answerPolicyVersion:ANSWER_POLICY_VERSION,
+    reportId:report.id,
     sourceHash:hash, model:MODEL, endpointHash:endpointHash(), createdAt:new Date().toISOString(),
     responseId:result.responseId, answers:result.answers,
     status:result.answers.some(a => a.needsReview) ? 'needs-review' : 'ready'};

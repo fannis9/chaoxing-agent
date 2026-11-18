@@ -18,6 +18,14 @@ const initial = {mode:'stopped', model:{name:'默认模型', id:process.env.CX_A
 let state = initial;
 try { state = {...initial, ...JSON.parse(readFileSync(statePath, 'utf8'))}; } catch {}
 if (state.mode === 'running' || state.mode === 'pausing') state.mode = 'stopped';
+try {
+  const submitted = new Set(readFileSync(join(dataDir, 'auto-events.jsonl'), 'utf8')
+    .split('\n').filter(Boolean).map(line => JSON.parse(line))
+    .filter(event => event.event === 'quiz-submitted').map(event => event.id));
+  for (const activity of state.modelActivity || []) {
+    if ([...submitted].some(id => activity.key?.startsWith(`${id}:`))) activity.status = 'submitted';
+  }
+} catch { /* no event history yet */ }
 let child = null;
 let stopping = false;
 let outputBuffer = '';
@@ -40,9 +48,9 @@ function recordModelActivity(event) {
     const report = JSON.parse(readFileSync(reportPath, 'utf8'));
     if (answer.reportId !== report.id || !Array.isArray(report.questions) ||
         !Array.isArray(answer.answers)) return;
-    const key = `${answer.reportId}:${answer.sourceHash}:${answer.model}`;
-    if (state.modelActivity.some(item => item.key === key)) return;
-    state.modelActivity.push({key, at:answer.createdAt, model:answer.model,
+    const keyPrefix = `${answer.reportId}:${answer.sourceHash}:${answer.model}`;
+    const key = `${keyPrefix}:${answer.answerPolicyVersion || 0}`;
+    const activity = {key, at:answer.createdAt, model:answer.model,
       title:report.title || '章节测验', chapterId:report.chapterId,
       status:answer.status, questions:report.questions.map(question => {
         const proposal = answer.answers.find(item => item.index === question.index);
@@ -50,7 +58,10 @@ function recordModelActivity(event) {
           answer:proposal?.answerValues?.join('、') || '',
           explanation:String(proposal?.explanation || '').slice(0,600),
           needsReview:Boolean(proposal?.needsReview)};
-      })});
+      })};
+    const prior = state.modelActivity.findIndex(item => item.key?.startsWith(keyPrefix));
+    if (prior >= 0) state.modelActivity[prior] = activity;
+    else state.modelActivity.push(activity);
     state.modelActivity = state.modelActivity
       .sort((left,right) => String(left.at).localeCompare(String(right.at))).slice(-12);
     save();
@@ -79,6 +90,10 @@ function launch() {
             (event.event === 'progress' && state.lastQuizIssue?.chapterId !== event.chapterId))
           state.lastQuizIssue = null;
         if (event.event === 'answer-proposal') recordModelActivity(event);
+        if (event.event === 'quiz-submitted') {
+          const activity = state.modelActivity.find(item => item.key?.startsWith(`${event.id}:`));
+          if (activity) activity.status = 'submitted';
+        }
         save();
       } catch {}
     }

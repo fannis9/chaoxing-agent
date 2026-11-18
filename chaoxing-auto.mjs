@@ -151,6 +151,8 @@ async function handleQuiz(event) {
     await child('chaoxing-answer-worker.mjs', ['--once', `--report=${event.report}`]);
     const answer = join(dirname(event.report), `answer-${event.report.match(/quiz-([a-f0-9]{16})\.json$/)?.[1]}.json`);
     const proposal = JSON.parse(readFileSync(answer, 'utf8'));
+    emit({event:'answer-proposal', report:event.report, answer,
+      model:proposal.model, status:proposal.status, count:proposal.answers?.length || 0});
     if (proposal.status !== 'ready') {
       const pending = proposal.answers.filter(answer => answer.needsReview)
         .map(answer => `第 ${answer.index} 题：${answer.explanation.slice(0, 120)}`);
