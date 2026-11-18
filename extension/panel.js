@@ -63,7 +63,7 @@ const statuses = {
   stopping:'正在停止', limit:'单节测试结束', 'needs-review':'需要检查',
 };
 const events = {started:'已启动',progress:'学习进度',quiz:'发现测验',
-  'quiz-submitted':'测验已提交','needs-review':'需要人工检查',
+  'quiz-submitted':'测验已提交','quiz-deferred':'测验已暂缓，待补做','needs-review':'需要人工检查',
   'schedule-complete':'课程队列完成'};
 
 function reset(message) {
