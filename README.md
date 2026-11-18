@@ -2,7 +2,7 @@
 
 基于 [PageBridge](https://github.com/fannis9/pagebridge) 控制同一个已登录的 Chrome 标签，串行处理学习通章节任务，并将测验交给当前控制会话处理。项目包含页面脚本、监听控制端、跨课程队列和只读长时监测工具。
 
-> 当前版本会**报告测验并等待**。独立答题工作进程可生成 AI 答案建议；控制端不会自动填写或提交。验证码、登录验证、未知任务和状态冲突也会暂停。页面结构可能变化；请先在自己的授权环境中测试。
+> 当前版本会**报告测验并等待**。独立答题工作进程可生成 AI 答案建议，页面填答器可在核对后填写当前测验。提交仍由当前控制会话处理。验证码、登录验证、未知任务和状态冲突也会暂停。页面结构可能变化；请先在自己的授权环境中测试。
 
 ## 架构
 
@@ -18,6 +18,7 @@ flowchart LR
 - **页面脚本** [`chaoxing-autoplay-v3.js`](chaoxing-autoplay-v3.js)：在当前章节识别文档、视频、测验；逐项等待平台任务状态确认，再点下一节。只使用页面播放器，不伪造视频进度上报。隐藏任务标签中的视频也按播放器状态处理。浏览器 Web Lock 防止同源多标签同时启动。
 - **控制端** [`chaoxing-quiz-control.mjs`](chaoxing-quiz-control.mjs)：通过 PageBridge 读取页面状态、保存题目 JSON/HTML/PNG、意外刷新后重注入、记录异常，并报告答题工作进程的结果。
 - **答题工作进程** [`chaoxing-answer-worker.mjs`](chaoxing-answer-worker.mjs)：独立扫描本地测验报告，调用 OpenAI Responses API，校验题目 ID 和答案格式，再写入本地答案建议文件。它不连接浏览器，也不提交测验。
+- **页面填答器** [`chaoxing-page-filler.mjs`](chaoxing-page-filler.mjs)：经 PageBridge 核对课程、章节、测验和题目控件，将已确认可填的答案写入原页面，并生成本地填写记录。
 - **调度器**：控制端在当前课程最后任务章节停下，打开课程目录核对「已完成任务点」总数；核对成功才在同一标签进入下一门课。队列只按一门一门执行。
 - **后台启动器** [`chaoxing-controller-daemon.mjs`](chaoxing-controller-daemon.mjs)：让控制端脱离交互终端继续运行。
 
@@ -78,7 +79,18 @@ node chaoxing-answer-worker.mjs --model=gpt-6.1-sol
 
 `CX_QUIZ_REPORT_DIR` 可指定与控制端共用的报告目录。只处理一次当前队列可加 `--once`；指定一个报告可用 `--once --report=/绝对路径/quiz-*.json`。首次运行会处理目录中尚无有效答案文件的报告。题目正文和已嵌入的图片会发送到选定模型接口；报告和结果都只保存在本地，输出文件权限为 `0600`。默认接口按 [OpenAI Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create) 的结构化输出格式调用。切换模型或接口后会重新生成答案，结果中记录 `model` 和接口指纹，便于核对。
 
-成功后生成 `quiz-reports/answer-*.json`。`status=ready` 表示映射检查通过；`status=needs-review` 表示题目缺字、缺图、缺控件或模型弃答。控制端会输出 `answer-proposal` 事件。答案文件目前供控制会话审核和手工填写；页面脚本仍会等待平台确认测验完成后继续。工作进程重启后不会重复请求未变化的报告；报告变化时会重新求解。接口失败或答案值不在题目选项中时，不覆盖已有结果，并在标准错误输出原因。
+成功后生成 `quiz-reports/answer-*.json`。`status=ready` 表示映射检查通过；`status=needs-review` 表示题目缺字、缺图、缺控件或模型弃答。控制端会输出 `answer-proposal` 事件。工作进程重启后不会重复请求未变化的报告；报告变化时会重新求解。接口失败或答案值不在题目选项中时，不覆盖已有结果，并在标准错误输出原因。
+
+## 页面填答器
+
+先检查答案与当前页的对应关系，再明确执行填写：
+
+```bash
+node chaoxing-page-filler.mjs --answer=/绝对路径/quiz-reports/answer-0123456789abcdef.json --tab=<标签ID>
+node chaoxing-page-filler.mjs --answer=/绝对路径/quiz-reports/answer-0123456789abcdef.json --tab=<标签ID> --apply
+```
+
+首条命令只输出 `fill-preview`；第二条才操作页面。省略 `--tab` 时需恰好有一个学习通章节标签。填答器核对答案文件的报告哈希、课程、章节、测验 ID、题目 ID、题干和控件映射。它跳过模型标记为需复核、缺失图片或字体、答案为空的题目。选择题点击原页面选项；普通文本框触发输入事件；富文本编辑器通过 UEditor 写入、同步并触发页面保存按钮。执行后保存权限为 `0600` 的 `fill-*.json` 记录。填写失败会停止后续题目并返回非零状态；它不点击测验提交按钮。页面脚本仍会等待平台确认测验完成后继续。
 
 运行检查点在 `quiz-reports/runtime.json`，课程队列在 `schedule.json`，事件在 `events.jsonl`，异常在 `incident-*.json`。这些文件可能包含课程内容，默认不提交到 Git。浏览器内的 `sessionStorage['cx-v3-runtime']` 用于页面刷新恢复，但平台任务状态始终是完成与否的依据。
 

@@ -91,6 +91,8 @@ function validateAnswers(report, parsed) {
     const kind = q.control?.kind || 'unknown';
     if (kind === 'choice' && values.some(v => !(q.options || []).some(o => o.value === v)))
       throw new Error(`选项值无效：${answer.index}`);
+    if (kind === 'choice' && /单选|判断/.test(q.type || '') && values.length > 1)
+      throw new Error(`单选题答案数量错误：${answer.index}`);
     if (kind === 'fill' && values.length && values.length !== q.control.blankCount)
       throw new Error(`填空数量错误：${answer.index}`);
     if (kind === 'editor' && values.length > 1) throw new Error(`简答数量错误：${answer.index}`);
