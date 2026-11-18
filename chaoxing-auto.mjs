@@ -150,7 +150,11 @@ async function handleQuiz(event) {
     await child('chaoxing-answer-worker.mjs', ['--once', `--report=${event.report}`]);
     const answer = join(dirname(event.report), `answer-${event.report.match(/quiz-([a-f0-9]{16})\.json$/)?.[1]}.json`);
     const proposal = JSON.parse(readFileSync(answer, 'utf8'));
-    if (proposal.status !== 'ready') throw new Error('模型答案包含需复核的题目');
+    if (proposal.status !== 'ready') {
+      const pending = proposal.answers.filter(answer => answer.needsReview)
+        .map(answer => `第 ${answer.index} 题：${answer.explanation.slice(0, 120)}`);
+      throw new Error(`模型答案需复核；${pending.join('；')}`);
+    }
     const filled = await child('chaoxing-page-filler.mjs', [`--answer=${answer}`, `--tab=${event.tab}`, '--apply']);
     if (filled?.event !== 'fill-result' || filled.failed?.length || filled.skipped?.length
         || filled.filled?.length !== report.questions.length) throw new Error('页面填写未全部确认');
