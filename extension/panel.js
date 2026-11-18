@@ -15,7 +15,10 @@ async function control(path, data) {
 }
 function renderConsole(state) {
   consoleState = state;
-  $('connection').textContent = `本机控制端已连接 · 队列${({running:'运行中',paused:'已暂停',stopped:'已停止'})[state.mode] || state.mode}\n${state.error || ''}`;
+  const mode = ({running:'运行中',paused:'已暂停',stopped:'已停止'})[state.mode] || state.mode;
+  $('connection').textContent = `本机控制端已连接 · 队列${mode}${state.error ? `\n${state.error}` : ''}`;
+  $('runSummary').textContent = state.mode === 'running'
+    ? `助手运行中 · ${state.event?.event || '等待任务'}` : `队列${mode}`;
   $('modelStatus').textContent = `${state.model.name || state.model.id} · ${state.keyConfigured ? '密钥已配置' : '密钥未配置'}`;
   for (const [id,value] of Object.entries({modelName:state.model.name,modelId:state.model.id,
     baseUrl:state.model.baseUrl,keyEnv:state.model.keyEnv})) {
@@ -35,7 +38,10 @@ function renderConsole(state) {
 }
 async function refreshConsole() {
   try { renderConsole(await control('/status')); }
-  catch (error) { $('connection').textContent = `本机控制端未连接 · ${error.message}`; }
+  catch (error) {
+    $('connection').textContent = `本机控制端未连接 · ${error.message}`;
+    $('runSummary').textContent = '本机控制端未连接';
+  }
 }
 
 function isChaoxing(url) {
@@ -59,6 +65,8 @@ function reset(message) {
   $('page').textContent = message;
   $('chapter').textContent = '';
   $('status').textContent = '—';
+  $('video').textContent = '无法读取当前章节的视频状态';
+  $('videoProgress').hidden = true;
   $('automatic').textContent = '—';
   $('quiz').textContent = '—';
   $('log').textContent = '—';
@@ -70,6 +78,18 @@ function render(data) {
   $('page').textContent = isStudy ? `课程 ${data.courseId || '未知'} · 章节 ${data.chapterId || '未知'}` : data.pageTitle || '学习通页面';
   $('chapter').textContent = data.chapterTitle || (isStudy ? '正在读取章节标题…' : '当前不是章节学习页');
   const runtime = data.runtime;
+  const currentRuntime = runtime && (!runtime.chapterId || runtime.chapterId === data.chapterId);
+  const video = currentRuntime ? runtime.video : null;
+  if (video?.duration) {
+    const percent = Math.min(100, Math.round(video.time / video.duration * 100));
+    $('video').textContent = `播放中 · ${percent}% · ${video.rate}×`;
+    $('videoProgress').value = percent;
+    $('videoProgress').hidden = false;
+  } else {
+    $('video').textContent = currentRuntime && runtime.status === 'waiting-quiz'
+      ? '视频任务已结束，正在处理测验' : '当前没有播放中的视频';
+    $('videoProgress').hidden = true;
+  }
   if (runtime && runtime.chapterId && data.chapterId && runtime.chapterId !== data.chapterId) {
     $('status').textContent = '已切换章节，等待当前章节状态更新';
   } else if (runtime) {
@@ -94,7 +114,9 @@ function render(data) {
   $('automatic').textContent = auto
     ? `${auto.chapterId && data.chapterId && auto.chapterId !== data.chapterId ? '上一章节 · ' : ''}${events[auto.event] || auto.event || '调度事件'}${auto.status ? ` · ${statuses[auto.status] || auto.status}` : ''}${auto.reason ? `\n${auto.reason}` : ''}`
     : '尚无自动调度事件';
-  $('quiz').textContent = data.quiz ? `${data.quiz.title} · ${data.quiz.questionCount} 题` : '当前没有待处理测验';
+  $('quiz').textContent = data.quiz && currentRuntime
+    ? `${data.quiz.title} · ${data.quiz.questionCount} 题 · 等待处理`
+    : '当前没有待处理测验';
   $('log').textContent = runtime?.lastLog?.join('\n') || data.visibleLog || '暂无日志';
   $('pulse').classList.toggle('live', Boolean(runtime?.active && runtime.source === 'live'));
 }

@@ -61,6 +61,7 @@ async function testPanelReadsExistingTab() {
       return [{result:{page:'https://mooc1.chaoxing.com/mycourse/studentstudy',
         chapterId:'937890675',courseId:'249626764',chapterTitle:'7.1 可逆电池热力学及电动势产生的机理',
         taskPoints:['1 教案 PPT'],runtime:{status:'running',chapterId:'937890675',completed:2,
+          video:{time:30,duration:120,rate:2},
           lastLog:['播放中'],active:true,source:'live'},automatic:null,quiz:null,visibleLog:''}}];
     }},
   };
@@ -70,6 +71,8 @@ async function testPanelReadsExistingTab() {
   assert.equal(calls[0].target.tabId,12);
   assert.match(element('chapter').textContent,/7\.1 可逆电池/);
   assert.match(element('status').textContent,/学习中/);
+  assert.match(element('video').textContent,/25%/);
+  assert.equal(element('videoProgress').value,25);
 }
 (async () => {
   await testPanelReadsExistingTab();
