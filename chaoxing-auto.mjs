@@ -24,6 +24,15 @@ function emit(event) {
   process.stdout.write(`${line}\n`);
   mkdirSync(OUT, {recursive:true, mode:0o700});
   appendFileSync(join(OUT, 'auto-events.jsonl'), `${line}\n`, {mode:0o600});
+  if (event.tab && ['started','progress','quiz','quiz-submitted','needs-review','schedule-complete'].includes(event.event)) {
+    const state = JSON.stringify({at:new Date().toISOString(), event:event.event,
+      status:event.status || '', reason:event.reason || '', chapterId:event.chapterId || ''});
+    const code = `(() => {const id='cx-auto-console-state';let node=document.getElementById(id);`
+      + `if(!node){node=document.createElement('script');node.id=id;node.type='application/json';document.body.appendChild(node);}`
+      + `const next=${JSON.stringify(state)};const prev=JSON.parse(node.textContent||'null');`
+      + `if(!prev||prev.at<=JSON.parse(next).at)node.textContent=next;return true})()`;
+    void page('eval', code, '--world', 'MAIN', '--tab', String(event.tab)).catch(() => {});
+  }
 }
 
 async function page(...args) {

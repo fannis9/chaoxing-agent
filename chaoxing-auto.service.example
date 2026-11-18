@@ -5,7 +5,7 @@ After=graphical-session.target
 [Service]
 Type=simple
 WorkingDirectory=/ABSOLUTE/PATH/TO/chaoxing-pagebridge
-ExecStart=/usr/bin/node --env-file=/ABSOLUTE/PATH/TO/chaoxing-pagebridge/.env /ABSOLUTE/PATH/TO/chaoxing-pagebridge/chaoxing-auto.mjs
+ExecStart=/ABSOLUTE/PATH/TO/node --env-file=/ABSOLUTE/PATH/TO/chaoxing-pagebridge/.env /ABSOLUTE/PATH/TO/chaoxing-pagebridge/chaoxing-auto.mjs
 Restart=on-failure
 RestartSec=10
 

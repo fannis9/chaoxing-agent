@@ -16,6 +16,10 @@ node --env-file=.env chaoxing-auto.mjs
 
 若希望电脑登录后自动启动此进程，可将 `chaoxing-auto.service.example` 中的仓库绝对路径替换为本机路径，安装为用户级 systemd 服务。服务会等待学习通登录，不会保存学习通密码。
 
+## Chrome 右侧控制台
+
+`extension/` 是独立的 Chrome 扩展。打开 `chrome://extensions`，开启开发者模式，点击「加载已解压的扩展程序」，选择本仓库的 `extension` 目录。扩展仅在 `https://chaoxing.com` 及其子域名标签上启用侧栏；点击工具栏图标可打开控制台。控制台每 3 秒读取当前章节状态、测验和日志，并可停止本页脚本。Chrome 的侧栏位置由浏览器设置决定；如果当前设在左侧，在 Chrome 侧栏设置中切换到右侧。扩展不读取模型密钥，也不向第三方发送数据。
+
 ## 架构
 
 ```mermaid

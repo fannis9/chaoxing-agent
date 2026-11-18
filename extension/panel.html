@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>学习通控制台</title>
+<link rel="stylesheet" href="panel.css">
+<main>
+  <header><h1>学习通控制台</h1><span id="pulse" aria-label="刷新状态"></span></header>
+  <p id="page">正在读取页面…</p>
+  <section><h2>当前任务</h2><div id="status">等待页面状态</div></section>
+  <section><h2>自动流程</h2><div id="automatic">等待调度器</div></section>
+  <section><h2>测验</h2><div id="quiz">当前没有待处理测验</div></section>
+  <section><h2>最近日志</h2><pre id="log">暂无日志</pre></section>
+  <div class="actions"><button id="refresh">刷新</button><button id="stop">停止本页脚本</button></div>
+  <p id="message" role="status"></p>
+</main>
+<script src="panel.js"></script>
+</html>
