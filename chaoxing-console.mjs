@@ -115,6 +115,7 @@ const server = createServer(async (request,response) => {
   response.setHeader('Vary','Origin');
   response.setHeader('Access-Control-Allow-Headers','Content-Type, X-CX-Console');
   response.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');
+  response.setHeader('Access-Control-Allow-Private-Network','true');
   if (request.method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
   try {
     const route = new URL(request.url,'http://localhost').pathname;

@@ -8,6 +8,7 @@ async function control(path, data) {
     method:data ? 'POST' : 'GET',
     headers:{'X-CX-Console':'1','Content-Type':'application/json'},
     body:data ? JSON.stringify(data) : undefined,
+    signal:AbortSignal.timeout(path === '/status' ? 5000 : 65000),
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
@@ -28,6 +29,8 @@ function renderConsole(state) {
   $('resume').disabled = state.mode !== 'paused';
   $('pause').disabled = state.mode !== 'running';
   $('stopAll').disabled = state.mode === 'stopped';
+  $('testModel').disabled = false;
+  $('send').disabled = false;
   const conversation = $('conversation');
   conversation.replaceChildren();
   for (const message of state.messages || []) {
@@ -41,6 +44,8 @@ async function refreshConsole() {
   catch (error) {
     $('connection').textContent = `本机控制端未连接 · ${error.message}`;
     $('runSummary').textContent = '本机控制端未连接';
+    $('modelStatus').textContent = `无法读取模型配置 · ${error.message}`;
+    for (const id of ['start','pause','resume','stopAll','testModel','send']) $(id).disabled = true;
   }
 }
 

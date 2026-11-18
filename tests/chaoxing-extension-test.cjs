@@ -49,7 +49,7 @@ async function testPanelReadsExistingTab() {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id,{textContent:'',classList:{toggle:() => {},remove:() => {}},
-      addEventListener:() => {}});
+      addEventListener:() => {},replaceChildren:() => {},append:() => {}});
     return elements.get(id);
   };
   const calls=[];
@@ -66,13 +66,18 @@ async function testPanelReadsExistingTab() {
     }},
   };
   vm.runInNewContext(fs.readFileSync(path.join(dir,'panel.js'),'utf8'),
-    {chrome:panelChrome,document:{getElementById:element},URL,snapshotPage:() => {},setInterval:() => {}});
+    {chrome:panelChrome,document:{getElementById:element},URL,snapshotPage:() => {},
+      setInterval:() => {},AbortSignal,fetch:async () => ({ok:true,json:async () => ({mode:'running',
+        model:{name:'DeepSeek',id:'deepseek-flash',baseUrl:'https://api.deepseek.com',keyEnv:'DEEPSEEK_API_KEY'},
+        keyConfigured:true,messages:[]})})});
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(calls[0].target.tabId,12);
   assert.match(element('chapter').textContent,/7\.1 可逆电池/);
   assert.match(element('status').textContent,/学习中/);
   assert.match(element('video').textContent,/25%/);
   assert.equal(element('videoProgress').value,25);
+  assert.match(element('modelStatus').textContent,/DeepSeek/);
+  assert.equal(element('modelId').value,'deepseek-flash');
 }
 (async () => {
   await testPanelReadsExistingTab();
