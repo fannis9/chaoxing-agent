@@ -114,7 +114,7 @@ async function askModel(report) {
     text:{format}};
   const response = await fetch(`${API.replace(/\/$/, '')}/responses`, {method:'POST',
     headers:{Authorization:`Bearer ${key}`, 'Content-Type':'application/json'},
-    body:JSON.stringify(body), signal:AbortSignal.timeout(120000)});
+    body:JSON.stringify(body), signal:AbortSignal.timeout(240000)});
   if (!response.ok) throw new Error(`模型接口 HTTP ${response.status}`);
   const data = await response.json();
   if (data.status !== 'completed') throw new Error(`模型响应未完成：${data.status || 'unknown'}`);

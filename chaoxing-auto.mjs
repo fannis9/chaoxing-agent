@@ -17,6 +17,7 @@ const tabArg = process.argv.find(arg => arg.startsWith('--tab='))?.slice(6);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const busy = new Set();
 const handled = new Set();
+const retryCount = new Map();
 let stopped = false;
 
 function emit(event) {
@@ -24,7 +25,7 @@ function emit(event) {
   process.stdout.write(`${line}\n`);
   mkdirSync(OUT, {recursive:true, mode:0o700});
   appendFileSync(join(OUT, 'auto-events.jsonl'), `${line}\n`, {mode:0o600});
-  if (event.tab && ['started','progress','quiz','quiz-submitted','quiz-deferred','needs-review','schedule-complete'].includes(event.event)) {
+  if (event.tab && ['started','progress','quiz','quiz-retry','quiz-submitted','needs-review','schedule-complete'].includes(event.event)) {
     const state = JSON.stringify({at:new Date().toISOString(), event:event.event,
       status:event.status || '', reason:event.reason || '', chapterId:event.chapterId || ''});
     const code = `(() => {const id='cx-auto-console-state';let node=document.getElementById(id);`
@@ -157,8 +158,16 @@ async function handleQuiz(event) {
     handled.add(key);
     emit({event:'quiz-submitted', tab:event.tab, id:event.id, questions:report.questions.length});
   } catch (error) {
-    handled.add(key);
-    emit({event:'needs-review', tab:event.tab, id:event.id, reason:String(error.message || error).slice(0,500)});
+    const reason = String(error.message || error);
+    const retries = retryCount.get(key) || 0;
+    if (!stopped && retries < 1 && /timeout|timed out|HTTP (429|500|502|503|504)/i.test(reason)) {
+      retryCount.set(key, retries + 1);
+      emit({event:'quiz-retry', tab:event.tab, id:event.id, reason:'模型请求暂时失败，30 秒后重试'});
+      setTimeout(() => { if (!stopped) void handleQuiz(event); }, 30000);
+    } else {
+      handled.add(key);
+      emit({event:'needs-review', tab:event.tab, id:event.id, reason:reason.slice(0,500)});
+    }
   } finally { busy.delete(key); }
 }
 
