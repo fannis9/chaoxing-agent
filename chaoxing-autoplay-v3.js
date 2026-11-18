@@ -324,7 +324,7 @@
     assertActive();
     nextButton().click();
     await wait(CFG.nextSettleMs);
-    const deadline = Date.now() + 15000;
+    const deadline = Date.now() + 60000;
     while (Date.now() < deadline) {
       assertActive();
       try { if (chapterFingerprint() !== before) return; } catch { /* page transitioning */ }
@@ -369,6 +369,7 @@
       await wait(500);
     } while (Date.now() < deadline);
     if (!sources.work) return null;
+    if (!sources.quizDocument) throw new Error('测验题目 iframe 在 60 秒内未加载，无法交给模型解答');
     const doc = sources.quizDocument;
     const params = new URL(location.href).searchParams;
     let imageBudget = 2_000_000;
@@ -481,7 +482,7 @@
     data.textContent = JSON.stringify(report);
     document.body.appendChild(data);
     setStatus('waiting-quiz');
-    log(`检测到测验：${report.questionCount} 题；已生成控制端报告，等待人工处理`);
+    log(`检测到测验：${report.questionCount} 题；已生成控制端报告，等待答题处理`);
     return true;
   }
 
