@@ -26,17 +26,3 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.url || info.status === 'complete') void updateTab(tabId, tab.url);
 });
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== 'stop-page' || !isChaoxing(sender.url || sender.tab?.url)) return;
-  const tabId = sender.tab?.id;
-  if (!tabId) return;
-  chrome.scripting.executeScript({target:{tabId}, world:'MAIN',
-    func:() => {
-      if (typeof window.__cxV3?.stop !== 'function') return {ok:false, reason:'当前页没有运行中的章节脚本'};
-      window.__cxV3.stop();
-      return {ok:true};
-    }}).then(result => sendResponse(result[0]?.result || {ok:false}))
-    .catch(error => sendResponse({ok:false,reason:error.message}));
-  return true;
-});

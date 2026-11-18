@@ -1,5 +1,6 @@
 const $ = id => document.getElementById(id);
 let activeTab = null;
+let requestId = 0;
 
 function isChaoxing(url) {
   try {
@@ -9,38 +10,75 @@ function isChaoxing(url) {
   } catch { return false; }
 }
 
-async function refresh() {
-  const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
-  activeTab = tab?.id || null;
-  if (!tab || !isChaoxing(tab.url)) {
-    $('page').textContent = '请切换到学习通页面';
-    $('status').textContent = '未连接学习通标签';
-    $('automatic').textContent = '—';
-    $('quiz').textContent = '—';
-    $('log').textContent = '—';
-    $('pulse').classList.remove('live');
-    return;
+const statuses = {
+  starting:'启动中', running:'学习中', 'waiting-quiz':'等待测验处理',
+  'course-boundary':'课程末章核验', complete:'已完成', stopped:'已停止',
+  stopping:'正在停止', limit:'单节测试结束', 'needs-review':'需要检查',
+};
+const events = {started:'已启动',progress:'学习进度',quiz:'发现测验',
+  'quiz-submitted':'测验已提交','needs-review':'需要人工检查',
+  'schedule-complete':'课程队列完成'};
+
+function reset(message) {
+  $('page').textContent = message;
+  $('chapter').textContent = '';
+  $('status').textContent = '—';
+  $('automatic').textContent = '—';
+  $('quiz').textContent = '—';
+  $('log').textContent = '—';
+  $('pulse').classList.remove('live');
+}
+
+function render(data) {
+  const isStudy = /\/mycourse\/studentstudy\/?$/.test(new URL(data.page).pathname);
+  $('page').textContent = isStudy ? `课程 ${data.courseId || '未知'} · 章节 ${data.chapterId || '未知'}` : data.pageTitle || '学习通页面';
+  $('chapter').textContent = data.chapterTitle || (isStudy ? '正在读取章节标题…' : '当前不是章节学习页');
+  const runtime = data.runtime;
+  if (runtime && runtime.chapterId && data.chapterId && runtime.chapterId !== data.chapterId) {
+    $('status').textContent = '已切换章节，等待当前章节状态更新';
+  } else if (runtime) {
+    const lines = [
+      `状态：${statuses[runtime.status] || runtime.status || '未知'}`,
+      `本次运行已完成章节：${runtime.completed}`,
+    ];
+    if (runtime.source === 'checkpoint') lines.push('来源：上次运行记录');
+    if (runtime.video?.duration) {
+      const {time,duration,rate} = runtime.video;
+      lines.push(`视频：${Math.floor(time / 60)}:${String(time % 60).padStart(2,'0')} / ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2,'0')} · ${rate}×`);
+    }
+    if (runtime.incident) lines.push(`异常：${runtime.incident}`);
+    if (data.taskPoints.length) lines.push(`本节任务点：${data.taskPoints.join('、')}`);
+    $('status').textContent = lines.join('\n');
+  } else {
+    $('status').textContent = isStudy
+      ? `等待章节脚本启动${data.taskPoints.length ? `\n本节任务点：${data.taskPoints.join('、')}` : ''}`
+      : '打开章节学习页后显示任务状态';
   }
+  const auto = data.automatic;
+  $('automatic').textContent = auto
+    ? `${auto.chapterId && data.chapterId && auto.chapterId !== data.chapterId ? '上一章节 · ' : ''}${events[auto.event] || auto.event || '调度事件'}${auto.status ? ` · ${statuses[auto.status] || auto.status}` : ''}${auto.reason ? `\n${auto.reason}` : ''}`
+    : '尚无自动调度事件';
+  $('quiz').textContent = data.quiz ? `${data.quiz.title} · ${data.quiz.questionCount} 题` : '当前没有待处理测验';
+  $('log').textContent = runtime?.lastLog?.join('\n') || data.visibleLog || '暂无日志';
+  $('pulse').classList.toggle('live', Boolean(runtime?.active && runtime.source === 'live'));
+}
+
+async function refresh() {
+  const thisRequest = ++requestId;
+  let tab;
+  try { [tab] = await chrome.tabs.query({active:true,currentWindow:true}); }
+  catch (error) { reset(`无法定位当前标签：${error.message}`); return; }
+  if (thisRequest !== requestId) return;
+  activeTab = tab?.id || null;
+  if (!tab || !isChaoxing(tab.url)) { reset('请切换到学习通页面'); return; }
   try {
-    const data = await chrome.tabs.sendMessage(tab.id, {type:'snapshot'});
-    $('page').textContent = `${data.title || '学习通'} · ${data.chapterId || '课程页面'}`;
-    const runtime = data.runtime;
-    $('status').textContent = runtime
-      ? `状态：${runtime.status || '未知'}\n已完成章节：${runtime.completed}\n${runtime.incident ? `异常：${runtime.incident}` : ''}`
-      : '等待章节脚本启动';
-    $('automatic').textContent = data.automatic
-      ? `${data.automatic.event}${data.automatic.status ? ` · ${data.automatic.status}` : ''}${data.automatic.reason ? `\n${data.automatic.reason}` : ''}`
-      : '等待调度器';
-    $('quiz').textContent = data.quiz ? `${data.quiz.title} · ${data.quiz.questionCount} 题` : '当前没有待处理测验';
-    $('log').textContent = runtime?.lastLog?.join('\n') || data.visibleLog || '暂无日志';
-    $('pulse').classList.toggle('live', Boolean(runtime?.active));
-  } catch {
-    $('page').textContent = tab.title || '学习通';
-    $('status').textContent = '页面正在加载，稍后重试';
-    $('automatic').textContent = '—';
-    $('quiz').textContent = '—';
-    $('log').textContent = '—';
-    $('pulse').classList.remove('live');
+    const result = await chrome.scripting.executeScript({target:{tabId:tab.id},func:snapshotPage});
+    if (thisRequest !== requestId) return;
+    if (!result[0]?.result) throw new Error('页面没有返回状态');
+    render(result[0].result);
+  } catch (error) {
+    if (thisRequest !== requestId) return;
+    reset(`无法读取页面：${error.message}`);
   }
 }
 
@@ -48,9 +86,15 @@ $('refresh').addEventListener('click', () => void refresh());
 $('stop').addEventListener('click', async () => {
   if (!activeTab) return;
   try {
-    const result = await chrome.tabs.sendMessage(activeTab, {type:'stop-page'});
-    $('message').textContent = result.ok ? '本页脚本已停止' : result.reason || '停止失败';
-  } catch { $('message').textContent = '页面未连接'; }
+    const result = await chrome.scripting.executeScript({target:{tabId:activeTab},world:'MAIN',
+      func:() => {
+        if (typeof window.__cxV3?.stop !== 'function') return {ok:false,reason:'当前页没有运行中的章节脚本'};
+        window.__cxV3.stop();
+        return {ok:true};
+      }});
+    const outcome = result[0]?.result;
+    $('message').textContent = outcome?.ok ? '本页脚本已停止' : outcome?.reason || '停止失败';
+  } catch (error) { $('message').textContent = `停止失败：${error.message}`; }
   await refresh();
 });
 chrome.tabs.onActivated.addListener(() => void refresh());
