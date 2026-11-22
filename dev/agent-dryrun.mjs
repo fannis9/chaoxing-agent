@@ -5,6 +5,7 @@ import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {BridgeClient} from '../lib/bridge-client.mjs';
 import {step} from '../lib/agent-loop.mjs';
+import {detectPlatform} from '../platforms/registry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -41,7 +42,9 @@ const history = [];
 for (let round = 1; round <= rounds; round += 1) {
   const started = Date.now();
   const forced = process.argv.includes('--force-model');
+  const platform = detectPlatform(await bridge.url(String(tab)).catch(() => ''));
   const {scene, decision, result, check} = await step({
+    platform,
     bridge, tab: study.id, model, dataDir: join(ROOT, 'quiz-reports'), history, dryRun: !act, forceModel: forced,
   });
   const brief = {

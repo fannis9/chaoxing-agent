@@ -1,9 +1,10 @@
 import {BridgeClient} from '../lib/bridge-client.mjs';
 import {readScene} from '../lib/probe.mjs';
+import {detectPlatform} from '../platforms/registry.mjs';
 
 const bridge = new BridgeClient();
 const tab = process.argv[2] || (await bridge.tabs()).find(row => /studentstudy/.test(row.url))?.id;
-const scene = await readScene(bridge, tab);
+const scene = await readScene(bridge, tab, detectPlatform(await bridge.url(String(tab)).catch(() => '')));
 console.log('scene:', JSON.stringify({
   chapter: scene.chapter, defaults: scene.defaults,
   tasks: scene.tasks.map(task => ({id: task.id, type: task.type, state: task.state, token: task.token ? 'yes' : ''})),

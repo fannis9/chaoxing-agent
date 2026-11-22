@@ -88,7 +88,12 @@ async function main() {
     } catch { /* 标签可能已关闭 */ }
     await sleep(8000);
   }
-  emit({event: 'started', tab, mode: dryRun ? 'dry-run' : 'act', platform: detectPlatform(await bridge.url(String(tab)).catch(() => ''))?.id || null});
+  let platform = detectPlatform(await bridge.url(String(tab)).catch(() => ''));
+  if (!platform) {
+    emit({event: 'needs-review', tab, reason: '不认识的站点，没有对应的平台适配器'});
+    return;
+  }
+  emit({event: 'started', tab, mode: dryRun ? 'dry-run' : 'act', platform: platform.id});
   let lastChapter = '';
   let chaptersSinceReload = 0;
   const history = [];
@@ -101,6 +106,7 @@ async function main() {
     let outcome;
     try {
       outcome = await step({
+        platform,
       bridge, tab, model, dataDir: OUT, history, dryRun,
       });
       consecutiveFailures = 0;
@@ -240,7 +246,7 @@ async function main() {
       let finished = false;
       while (Date.now() < doneBy && !finished) {
         await sleep(3000);
-        const next = await readScene(bridge, tab);
+        const next = await readScene(bridge, tab, platform);
         finished = next.allTasksDone || next.chapter.id !== scene.chapter.id;
       }
       log.push(`${new Date().toLocaleTimeString()} 测验章节处理完成`);
