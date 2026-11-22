@@ -46,5 +46,7 @@ const doc = ruleDecide(scene({tasks: [{id: '9', type: 'document', state: 'pendin
 check('文档决策带上接口参数', `${doc.args.taskId}/${doc.args.knowledgeid}/${doc.args.courseid}/${doc.args.clazzid}/${doc.args.token}`,
   '9/1/2/3/abc');
 
+check('视频弹题 → answer_popup', ruleDecide({...scene(), popup: {present: true, text: '下列哪个是电子？', options: ['质子', '电子']}})?.action, 'answer_popup');
+
 console.log(failed ? `\n${failed} 项失败` : '\n规则测试全部通过');
 process.exit(failed ? 1 : 0);

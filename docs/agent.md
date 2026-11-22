@@ -41,6 +41,7 @@ probe（页面内一次性采集）
 | `wait` | 什么都不做，等下一轮 | — |
 | `play_document` | 交给已验证的单章页面脚本执行（文档接口单独调用会被平台拒绝） | 任务完成或章节变化（5 分钟窗口） |
 | `answer_quiz` | 报告 → 作答 → 填卷 → 提交 → 核验 | 平台完成标记 |
+| `answer_popup` | 视频弹题：读题 → 模型选一个选项 → 点选并提交 | 弹题消失、播放继续 |
 | `next_chapter` | 点「下一节」 | 章节 id 变化 |
 | `mark_deferred` | 记待补做并前进 | 章节 id 变化 |
 | `activate_tab` / `reload_page` / `open_course` / `ask_operator` / `wait` | 见名 | 视动作而定 |

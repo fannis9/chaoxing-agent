@@ -11,7 +11,10 @@
 | `id` / `name` / `hosts` | 标识与展示 | ✅ |
 | `match(url)` | 这个 URL 是不是本平台 | ✅ |
 | `taskAction(type)` | 平台任务类型 → 通用动作（`play_video` / `play_document` / `answer_quiz`）；不认识的返回 `null` | ✅ |
+| `readTasks()` | **页面内**读取任务列表（会被序列化注入页面），返回 `{tasks, defaults, containerDepth, nextAvailable, popup}` | ✅ |
+| `pageKind(url)` / `chapterId(url)` | Node 侧判定页面类型与章节 id | ✅ |
 | `isStudyPage(url)` / `isEntryPage(url)` | 章节页 / 目录页判定 | ✅ |
+| `experimental: true` | 未实测平台：控制器拒绝动作，只允许 dry-run 只读 | 可选 |
 | `enterCourse(ctx)` | 从目录进入章节页（学习通要两步换 enc） | ✅ |
 | `quiz.ensureReport(ctx)` / `quiz.run(ctx)` | 测验报告与作答提交链路 | 可选 |
 
@@ -45,6 +48,7 @@ export function detectPlatform(url) { /* 逐个 match */ }
 
 ## 现状与下一步
 
-- 已实现：`platforms/chaoxing`（学习通），循环、入口、答题都已走适配器；
-- **感知层（`lib/probe.mjs`）仍是学习通风格**（`AttachmentSetting`、`#prevNextFocusNext`）——这是下一块要收进适配器的：把 `probe` 变成平台的 `readTasks(scene)` 钩子，`probe.mjs` 只保留通用骨架；
-- 第二个平台建议先做只读探针，验证接口抽象站得住，再补 `enterCourse` 和 `quiz`。
+- 已实现：`platforms/chaoxing`（学习通），**感知/循环/入口/答题都已走适配器**；
+- 只读探针：`platforms/zhihuishu`（智慧树，`experimental`，没有账号实测，`--act` 会被拒绝）；
+- 感知层已抽象：`lib/probe.mjs` 只采集通用信号（播放器、拦截、可见性），任务与页面类型由平台提供；
+- 第二个平台（智慧树）目前只有只读探针，等真实页面验证后再补 `enterCourse` / `quiz` 并去掉 `experimental`。

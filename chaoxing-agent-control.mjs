@@ -93,6 +93,10 @@ async function main() {
     emit({event: 'needs-review', tab, reason: '不认识的站点，没有对应的平台适配器'});
     return;
   }
+  if (platform.experimental && !dryRun) {
+    emit({event: 'needs-review', tab, platform: platform.id, reason: `${platform.name} 适配器尚未实测，只做只读探针`});
+    return;
+  }
   emit({event: 'started', tab, mode: dryRun ? 'dry-run' : 'act', platform: platform.id});
   let lastChapter = '';
   let chaptersSinceReload = 0;

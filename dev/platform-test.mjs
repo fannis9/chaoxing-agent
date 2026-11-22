@@ -11,11 +11,15 @@ const check = (label, actual, expected) => {
 check('学习通章节页被识别', detectPlatform('https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=1')?.id, 'chaoxing');
 check('学习通门户被识别', detectPlatform('https://i.chaoxing.com/base?ws=1')?.id, 'chaoxing');
 check('学习通目录被识别', detectPlatform('https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid=1')?.id, 'chaoxing');
-check('别的站点不被误判', detectPlatform('https://zhihuishu.com/study') ?? null, null);
+check('别的站点不被误判', detectPlatform('https://example.com/study') ?? null, null);
 check('空 URL 不崩', detectPlatform('') ?? null, null);
 check('按 id 取适配器', platformById('chaoxing')?.name, '超星学习通');
 check('未知 id 返回 null', platformById('nope') ?? null, null);
-check('注册表只登记一个平台', platformList().map(p => p.id), ['chaoxing']);
+check('注册表登记两个平台', platformList().map(p => p.id), ['chaoxing', 'zhihuishu']);
+check('智慧树被识别', detectPlatform('https://studyh5.zhihuishu.com/study/123')?.id, 'zhihuishu');
+check('智慧树是实验性适配器', platformById('zhihuishu')?.experimental, true);
+check('学习通不是实验性适配器', platformById('chaoxing')?.experimental ?? false, false);
+check('智慧树任务映射', platformById('zhihuishu').taskAction('quiz'), 'answer_quiz');
 
 const cx = platformById('chaoxing');
 check('任务类型 → 动作：video', cx.taskAction('video'), 'play_video');

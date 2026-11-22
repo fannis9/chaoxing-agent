@@ -1,7 +1,8 @@
 // 平台注册表：按 URL 选出适配器。新增平台 = 在 platforms/<id>/ 实现同一组钩子并在这里登记。
 import {chaoxing} from './chaoxing/index.mjs';
+import {zhihuishu} from './zhihuishu/index.mjs';
 
-const adapters = [chaoxing];
+const adapters = [chaoxing, zhihuishu];
 
 /** 返回匹配该 URL 的平台适配器，未匹配返回 null。 */
 export function detectPlatform(url = '') {

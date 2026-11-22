@@ -45,12 +45,31 @@ export function readTasks() {
     });
   }
 
+  // 视频弹题：播放中弹出的选择题，不答完不会继续播。
+  let popup = null;
+  const popupRoot = ['.ans-videoquiz', '[class*="videoquiz"]', '[id*="videoquiz"]', '.videoquiz-container']
+    .map(selector => document.querySelector(selector))
+    .find(node => node && node.getClientRects().length);
+  if (popupRoot) {
+    const options = [...popupRoot.querySelectorAll('li,label,.option,[class*="option"],[class*="item"]')]
+      .filter(node => node.getClientRects().length && String(node.innerText || '').trim())
+      .map(node => String(node.innerText || '').replace(/\s+/g, ' ').trim())
+      .filter((value, index, all) => all.indexOf(value) === index)
+      .slice(0, 8);
+    popup = {
+      present: true,
+      text: String(popupRoot.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 400),
+      options,
+    };
+  }
+
   const nextButton = document.getElementById('prevNextFocusNext');
   return {
     tasks,
     defaults,
     containerDepth,
     nextAvailable: Boolean(nextButton && visible(nextButton)),
+    popup,
   };
 }
 
