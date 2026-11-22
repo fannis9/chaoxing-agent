@@ -25,7 +25,8 @@ const cx = platformById('chaoxing');
 check('任务类型 → 动作：video', cx.taskAction('video'), 'play_video');
 check('任务类型 → 动作：document', cx.taskAction('document'), 'play_document');
 check('任务类型 → 动作：workid', cx.taskAction('workid'), 'answer_quiz');
-check('未知任务类型 → null', cx.taskAction('hyperlink') ?? null, null);
+check('外链任务类型 → open_link', cx.taskAction('hyperlink'), 'open_link');
+check('未知任务类型 → null', cx.taskAction('live') ?? null, null);
 check('缺少类型 → null', cx.taskAction(undefined) ?? null, null);
 
 check('章节页判定', cx.isStudyPage('https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=1'), true);

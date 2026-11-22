@@ -43,7 +43,7 @@ check('视频已暂停 → play_video', decide({
 }), 'play_video');
 check('文档 → play_document', decide({tasks: [{id: '9', type: 'document', state: 'pending', token: 'abc'}]}), 'play_document');
 check('测验 → answer_quiz', decide({tasks: [{id: '7', type: 'workid', state: 'pending'}]}), 'answer_quiz');
-check('未知类型 → 交给模型（ruleDecide 返回 null）', decide({tasks: [{id: '3', type: 'hyperlink', state: 'pending'}]}), null);
+check('未知类型 → 交给模型（ruleDecide 返回 null）', decide({tasks: [{id: '3', type: 'live', state: 'pending'}]}), null);
 check('陌生平台 → 交给模型', ruleDecide({...scene(), url: 'https://example.com/course', tasks: [{id: '1', type: 'video', state: 'pending'}]}), null);
 
 const doc = ruleDecide(scene({tasks: [{id: '9', type: 'document', state: 'pending', token: 'abc'}]}));
@@ -68,6 +68,8 @@ check('播放器没加载（readyState=0）→ 重新播放',
 check('播放器已加载且在播 → wait',
   decide({tasks: [{id: '9', type: 'video', state: 'pending', required: true}],
     player: {paused: false, currentTime: 30, duration: 300, readyState: 4}}), 'wait');
+
+check('外链任务点 → open_link', decide({tasks: [{id: '8', type: 'hyperlink', state: 'pending', required: true}]}), 'open_link');
 
 console.log(failed ? `\n${failed} 项失败` : '\n规则测试全部通过');
 process.exit(failed ? 1 : 0);

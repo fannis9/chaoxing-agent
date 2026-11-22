@@ -11,6 +11,7 @@ const TASK_ACTIONS = {
   video: 'play_video',
   document: 'play_document',
   workid: 'answer_quiz',
+  hyperlink: 'open_link',
 };
 
 export const chaoxing = {
