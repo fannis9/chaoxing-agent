@@ -32,10 +32,12 @@ export function readTasks() {
     containerDepth = selected.depth;
     try { defaults = {...(selected.setting.defaults || {})}; } catch { defaults = null; }
     for (const item of selected.setting.attachments) {
-      const id = String(item?.jobid || item?.property?._jobid || '');
+      const topJobId = String(item?.jobid || '');
+      const id = topJobId || String(item?.property?._jobid || '');
       const mid = String(item?.property?.mid || '');
-      // job === true 才是平台计入进度的任务点；知识拓展/资料类 job 为空。
-      const required = item?.job === true;
+      // 任务点判定：job === true，或附件自己带顶层 jobid；
+      // 知识拓展/资料类通常 job 缺失且顶层 jobid 为空（只有 property._jobid）。
+      const required = item?.job === true || Boolean(topJobId);
       let domFinished = false;
       try {
         const node = id
