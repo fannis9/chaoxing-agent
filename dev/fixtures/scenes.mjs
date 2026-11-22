@@ -25,6 +25,16 @@ export const scenes = {
     allTasksDone: false,
   },
 
+  // 视频任务点，已经播到结尾附近（平台需要时间上报完成）
+  videoNearEnd: {
+    ...base,
+    chapter: {id: '640997540', name: '滴定'},
+    tasks: [{index: 0, id: '1663040725530933', mid: 'mid-near', signature: 'videojs',
+      type: 'videojs', required: true, state: 'pending', token: ''}],
+    player: {present: true, paused: true, currentTime: 284, duration: 286, readyState: 4, rate: 1, videojs: true},
+    allTasksDone: false,
+  },
+
   // 视频任务点，播放器没加载（readyState=0，duration=null）
   videoNotLoaded: {
     ...base,

@@ -12,6 +12,7 @@ const act = (scene, options) => ruleDecide(scene, options)?.action ?? null;
 
 check('视频在播 → wait', act(scenes.videoPlaying), 'wait');
 check('播放器没加载 → play_video', act(scenes.videoNotLoaded), 'play_video');
+check('视频快到结尾 → wait（别打断完成上报）', act(scenes.videoNearEnd), 'wait');
 check('外链已完成 → next_chapter', act(scenes.hyperlinkDone), 'next_chapter');
 check('拓展资料默认跳过 → next_chapter', act(scenes.optionalVideo), 'next_chapter');
 check('开关打开则播放拓展资料 → play_video', act(scenes.optionalVideo, {processOptional: true}), 'play_video');
