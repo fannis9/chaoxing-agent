@@ -2,7 +2,7 @@
 // Agent-mode controller: observe -> decide -> act -> verify, replacing the fixed
 // chapter state machine. Quiz chapters are handed back to the classic pipeline
 // (the page script owns reporting/submission there).
-import {mkdirSync, renameSync, writeFileSync as writeFile} from 'node:fs';
+import {mkdirSync, readFileSync, renameSync, writeFileSync, writeFileSync as writeFile} from 'node:fs';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {BridgeClient} from './lib/bridge-client.mjs';
@@ -146,6 +146,17 @@ async function main() {
       continue;
     }
     const {scene, decision, result, check} = outcome;
+    // 这章后来真的完成了 → 把之前的待补做记录撤掉，保持清单准确。
+    if (check?.ok && ['next_chapter', 'play_video', 'play_document', 'open_link'].includes(decision.action)) {
+      try {
+        const file = join(OUT, 'agent-deferred.jsonl');
+        const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
+        const kept = lines.filter(line => {
+          try { return String(JSON.parse(line).chapter) !== String(scene.chapter.id); } catch { return true; }
+        });
+        if (kept.length !== lines.length) writeFileSync(file, kept.length ? kept.join('\n') + '\n' : '');
+      } catch { /* 文件不存在或写入失败都不影响运行 */ }
+    }
     const chapterResult = chapterOutcome({decision, result, check, scene, before: scene});
     try {
       appendRotating(join(OUT, 'agent-outcomes.jsonl'), `${JSON.stringify({
@@ -213,7 +224,7 @@ async function main() {
       state.last = scene.player.currentTime;
       videoLoops.set(scene.chapter.id, state);
       const unfinished = scene.tasks.some(task => task.state !== 'done');
-      if (unfinished && (state.ends >= 2 || state.rewinds >= 2)) {
+      if (unfinished && (state.ends >= 3 || state.rewinds >= 3)) {
         emit({event: 'video-loop-detected', tab, chapterId: scene.chapter.id,
           reason: `视频已播放 ${state.ends} 遍/回退 ${state.rewinds} 次，平台仍未标记完成`});
         await act({bridge, tab, dataDir: OUT, decision: {action: 'mark_deferred',
