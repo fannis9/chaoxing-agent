@@ -9,8 +9,8 @@ const dir = mkdtempSync(join(tmpdir(), 'cx-quiz-control-'));
 const mock = join(dir, 'mock-page.mjs');
 writeFileSync(mock, `import { existsSync, writeFileSync } from 'node:fs';
 if (process.argv[2] === 'tabs')
-  console.log('* [77] 学生学习页面  ' +
-    (process.env.MOCK_TAB_URL || 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=1'));
+  console.log(JSON.stringify([{id:77,title:'学生学习页面',url:
+    process.env.MOCK_TAB_URL || 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=1'}]));
 else if (process.argv[2] === 'eval') {
   const code = process.argv[3] || '';
   if (code.includes('oldBox:')) console.log(JSON.stringify({oldBox:false,active:false,status:'',report:false,validPage:true}));
@@ -45,7 +45,7 @@ const report = {
 };
 const reportWithFont = {...report, questions:[{...report.questions[0],fontObfuscated:true}]};
 const result = spawnSync(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--once'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--once'],
   {encoding:'utf8', timeout:30000, env:{...process.env, CX_PAGE_BRIDGE:mock,
     CX_QUIZ_REPORT_DIR:join(dir,'reports'), MOCK_REPORT:JSON.stringify(reportWithFont)}});
 assert.equal(result.status, 0, result.stderr);
@@ -60,17 +60,23 @@ assert(existsSync(event.questionPreviews));
 const manifest = JSON.parse(readFileSync(event.questionPreviews, 'utf8'));
 assert.equal(manifest.items[0].index, 1);
 assert(existsSync(manifest.items[0].path));
-assert.equal(statSync(manifest.items[0].path).mode & 0o777, 0o600);
+if (process.platform !== 'win32') assert.equal(statSync(manifest.items[0].path).mode & 0o777, 0o600);
 assert(readFileSync(event.html,'utf8').includes('测试题干'));
 const answerPath = join(dir, 'reports', 'answer-' + event.report.match(/quiz-([a-f0-9]{16})\.json$/)[1] + '.json');
 writeFileSync(answerPath, JSON.stringify({schemaVersion:1,kind:'answer-proposal',status:'needs-review',
   sourceHash:createHash('sha256').update(readFileSync(event.report)).digest('hex'), answers:[]}));
 const withAnswer = spawnSync(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--once'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--once'],
   {encoding:'utf8', timeout:30000, env:{...process.env, CX_PAGE_BRIDGE:mock,
     CX_QUIZ_REPORT_DIR:join(dir,'reports'), MOCK_REPORT:''}});
 assert.equal(withAnswer.status, 0, withAnswer.stderr);
 assert.equal(JSON.parse(withAnswer.stdout.trim()).event, 'answer-proposal');
+const staleAnswer = spawnSync(process.execPath,
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--once', '--start'],
+  {encoding:'utf8', timeout:30000, env:{...process.env, CX_PAGE_BRIDGE:mock,
+    CX_QUIZ_REPORT_DIR:join(dir,'reports'), MOCK_REPORT:'', MOCK_INJECTED:join(dir,'stale-answer-injected')}});
+assert.equal(staleAnswer.status,0,staleAnswer.stderr);
+assert(!staleAnswer.stdout.includes('"event":"answer-proposal"'),'historical answers must not replace the current task');
 console.log(JSON.stringify({event:event.event, questions:event.questionCount,
   report:event.report, preview:event.preview}));
 
@@ -79,7 +85,7 @@ const runtime = {schemaVersion:1,runId:'local-run',courseId:'course',chapterId:'
   status:'needs-review',active:false,completed:[{chapterId:'first',tasks:2}],
   incident:{message:'平台状态冲突',at:new Date().toISOString()},lastLog:['已停止']};
 const persisted = spawnSync(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--once'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--once'],
   {encoding:'utf8', timeout:30000, env:{...process.env, CX_PAGE_BRIDGE:mock,
     CX_QUIZ_REPORT_DIR:incidentDir, MOCK_REPORT:JSON.stringify(report), MOCK_RUNTIME:JSON.stringify(runtime)}});
 assert.equal(persisted.status, 0, persisted.stderr);
@@ -88,16 +94,16 @@ const incident = records.find(record => record.event === 'incident');
 assert(incident?.path && existsSync(incident.path));
 const runtimePath = join(incidentDir, 'runtime.json');
 assert.equal(JSON.parse(readFileSync(runtimePath, 'utf8')).status, 'needs-review');
-assert.equal(statSync(runtimePath).mode & 0o777, 0o600);
+if (process.platform !== 'win32') assert.equal(statSync(runtimePath).mode & 0o777, 0o600);
 const status = spawnSync(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--status'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--status'],
   {encoding:'utf8', env:{...process.env, CX_QUIZ_REPORT_DIR:incidentDir}});
 assert.equal(JSON.parse(status.stdout).incident.message, '平台状态冲突');
 console.log(JSON.stringify({durableStatus:true, incident:true}));
 
 const navigationDir = join(dir, 'navigation-reports');
 const navigation = spawnSync(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--once', '--tab=77'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--once', '--tab=77'],
   {encoding:'utf8', timeout:30000, env:{...process.env, CX_PAGE_BRIDGE:mock,
     CX_QUIZ_REPORT_DIR:navigationDir, MOCK_TAB_URL:'https://i.chaoxing.com/space/index'}});
 assert.equal(navigation.status, 0, navigation.stderr);
@@ -109,7 +115,7 @@ console.log(JSON.stringify({navigationIncident:true}));
 
 const injected = join(dir, 'injected');
 const child = spawn(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--start'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--start'],
   {env:{...process.env, CX_PAGE_BRIDGE:mock, CX_QUIZ_REPORT_DIR:join(dir,'reports'),
     MOCK_REPORT:JSON.stringify(report), MOCK_INJECTED:injected}});
 let output = '';
@@ -138,7 +144,7 @@ try {
 const resumeInjected = join(dir, 'resume-injected');
 const reloaded = join(dir, 'reloaded');
 const resume = spawnSync(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--resume'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--resume'],
   {encoding:'utf8', timeout:30000, env:{...process.env, CX_PAGE_BRIDGE:mock,
     CX_QUIZ_REPORT_DIR:join(dir,'reports'), MOCK_REPORT:JSON.stringify(report),
     MOCK_INJECTED:resumeInjected, MOCK_RELOADED:reloaded}});
@@ -153,7 +159,7 @@ const autoDir = join(dir, 'auto-reports');
 const autoInjected = join(dir, 'auto-injected');
 const reportOnce = join(dir, 'report-read');
 const auto = spawn(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--start'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--start'],
   {env:{...process.env, CX_PAGE_BRIDGE:mock, CX_QUIZ_REPORT_DIR:autoDir,
     CX_QUIZ_POLL_MS:'100', MOCK_REPORT:JSON.stringify(report),
     MOCK_REPORT_ONCE:reportOnce, MOCK_INJECTED:autoInjected, MOCK_RELOADED:reloaded}});
@@ -183,7 +189,7 @@ const runtimeDir = join(dir, 'running-reports');
 const runtimeInjected = join(dir, 'running-injected');
 const runtimeOnce = join(dir, 'runtime-read');
 const running = spawn(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--start'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--start'],
   {env:{...process.env, CX_PAGE_BRIDGE:mock, CX_QUIZ_REPORT_DIR:runtimeDir,
     CX_QUIZ_POLL_MS:'100', MOCK_REPORT:'', MOCK_RUNTIME:JSON.stringify({...runtime,
       status:'running',active:true,incident:null}), MOCK_RUNTIME_ONCE:runtimeOnce,
@@ -215,7 +221,7 @@ const stoppedDir = join(dir, 'stopped-reports');
 const stoppedInjected = join(dir, 'stopped-injected');
 const stoppedOnce = join(dir, 'stopped-read');
 const stopped = spawn(process.execPath,
-  [new URL('../chaoxing-quiz-control.mjs', import.meta.url).pathname, '--start'],
+  [fileURLToPath(new URL('../chaoxing-quiz-control.mjs', import.meta.url)), '--start'],
   {env:{...process.env, CX_PAGE_BRIDGE:mock, CX_QUIZ_REPORT_DIR:stoppedDir,
     CX_QUIZ_POLL_MS:'100', MOCK_REPORT:'', MOCK_RUNTIME:JSON.stringify({...runtime,
       status:'stopped',active:false,incident:null}), MOCK_RUNTIME_ONCE:stoppedOnce,
@@ -241,3 +247,4 @@ try {
   stopped.kill('SIGTERM');
   if (stopped.exitCode === null) await new Promise(resolve => stopped.once('exit', resolve));
 }
+import {fileURLToPath} from 'node:url';

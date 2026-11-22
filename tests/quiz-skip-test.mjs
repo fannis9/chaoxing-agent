@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright-core';
+import {browserPath} from '../lib/config.mjs';
+import {eligibleForSkip,eligibleVideoFailure,judgeUnavailableQuiz,inspectUnavailableQuiz,advanceUnavailableQuiz} from '../lib/quiz-skip.mjs';
+const evidence={courseId:'1',chapterId:'2',work:true,questions:0,text:'教师未创建完成该测验'};
+assert(eligibleForSkip(evidence));
+for(const bad of [{questions:1},{text:'加载超时'},{text:'教师未创建完成该测验，请登录'},{work:false}])assert(!eligibleForSkip({...evidence,...bad}));
+let calls=0;const request=async()=>{calls++;return {text:'{"skip":true,"reason":"教师尚未完成创建"}'}};
+assert.equal((await judgeUnavailableQuiz({},evidence,request)).skip,true);
+assert.equal((await judgeUnavailableQuiz({},{...evidence,text:'网络错误'},request)).skip,false);
+assert.equal(calls,1);
+const videoEvent={event:'incident',chapterId:'2',reason:'未找到可播放的视频'};
+const videoEvidence={...evidence,work:false,video:true,text:'播放视频'};
+assert(eligibleVideoFailure(videoEvent,videoEvidence));
+for(const bad of [{video:false},{chapterId:'3'},{text:'请登录'},{text:'人脸识别'}])assert(!eligibleVideoFailure(videoEvent,{...videoEvidence,...bad}));
+assert(!eligibleVideoFailure({...videoEvent,reason:'连接中断'},videoEvidence));
+assert(!eligibleVideoFailure({...videoEvent,event:'progress'},videoEvidence));
+await assert.rejects(judgeUnavailableQuiz({},evidence,async()=>({text:'{"skip":"yes"}'})),/格式/);
+const browser=await chromium.launch({executablePath:browserPath(),headless:true});
+try{
+ const context=await browser.newContext();
+ await context.route('**/*',route=>route.fulfill({contentType:'text/html',body:`<button id="prevNextFocusNext" onclick="PCount.next()">下一节</button><iframe src="/work"></iframe>`}));
+ const page=await context.newPage();await page.goto('https://mooc1.chaoxing.com/mycourse/studentstudy?courseId=1&chapterId=2');
+ await page.evaluate(()=>{
+  const frame=document.querySelector('iframe');frame.contentDocument.body.innerHTML='教师未创建完成该测验';
+  frame.contentWindow.AttachmentSetting={attachments:[{type:'workid',job:true}]};
+  window.PCount={next:()=>{document.body.insertAdjacentHTML('beforeend','<div>当前章节还有任务点未完成<a href="#" id="confirm">下一节</a></div>');document.getElementById('confirm').onclick=e=>{e.preventDefault();history.pushState({},'', '?courseId=1&chapterId=3')};}};
+ });
+ const captured=await page.evaluate(inspectUnavailableQuiz);assert(eligibleForSkip(captured));
+ await page.evaluate(()=>{document.querySelector('iframe').contentWindow.AttachmentSetting.attachments.push({type:'video',job:true,isPassed:false});});
+ assert(eligibleVideoFailure(videoEvent,await page.evaluate(inspectUnavailableQuiz)));
+ await page.evaluate(()=>{document.body.insertAdjacentHTML('afterbegin','<p id="identity">请登录</p>');});
+ assert(!eligibleVideoFailure(videoEvent,await page.evaluate(inspectUnavailableQuiz)));
+ await page.evaluate(()=>document.getElementById('identity').remove());
+ assert.equal(await page.evaluate(advanceUnavailableQuiz,{courseId:'1',chapterId:'9'}),'changed');
+ assert.equal(await page.evaluate(advanceUnavailableQuiz,evidence),'clicked');
+ assert.equal(await page.evaluate(({fn,evidence})=>(0,eval)(`(${fn})`)(evidence,true),{fn:advanceUnavailableQuiz.toString(),evidence}),'confirmed');
+ assert.equal(new URL(page.url()).searchParams.get('chapterId'),'3');
+ console.log('PASS: model skip gates, malformed decisions, chapter binding, actual confirmation navigation');
+}finally{await browser.close();}

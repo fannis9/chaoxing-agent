@@ -6,25 +6,35 @@ import {existsSync, readFileSync, appendFileSync, mkdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
+import {RunScope,bindCancellation} from './lib/run-scope.mjs';
+import {bridgePath} from './lib/config.mjs';
+import {BridgeClient} from './lib/bridge-client.mjs';
+import {QuizJournal} from './lib/quiz-journal.mjs';
+import {appendRotating} from './lib/maintenance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.CX_QUIZ_REPORT_DIR || join(HERE, 'quiz-reports');
-const PAGE = process.env.CX_PAGE_BRIDGE || join(HERE, '..', 'pagebridge', 'page.mjs');
+const PAGE = bridgePath;
 const COURSE_FILE = process.env.CX_COURSE_CONFIG || join(HERE, 'chaoxing-courses.json');
 const SUBMIT = readFileSync(join(HERE, 'chaoxing-submit-page.js'), 'utf8').trim();
-const exec = promisify(execFile);
+const scope = new RunScope();
+bindCancellation(scope);
+const exec = (...args) => scope.exec(...args);
+const bridge = new BridgeClient(exec);
 const tabArg = process.argv.find(arg => arg.startsWith('--tab='))?.slice(6);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const busy = new Set();
 const handled = new Set();
 const retryCount = new Map();
+const quizEvents = new Map();
+const journal = new QuizJournal(OUT);
 let stopped = false;
 
 function emit(event) {
   const line = JSON.stringify({at:new Date().toISOString(), ...event});
   process.stdout.write(`${line}\n`);
   mkdirSync(OUT, {recursive:true, mode:0o700});
-  appendFileSync(join(OUT, 'auto-events.jsonl'), `${line}\n`, {mode:0o600});
+  appendRotating(join(OUT, 'auto-events.jsonl'), `${line}\n`);
   if (event.tab && ['started','progress','quiz','quiz-retry','quiz-submitted','needs-review','schedule-complete'].includes(event.event)) {
     const state = JSON.stringify({at:new Date().toISOString(), event:event.event,
       status:event.status || '', reason:event.reason || '', chapterId:event.chapterId || ''});
@@ -37,21 +47,18 @@ function emit(event) {
 }
 
 async function page(...args) {
-  const {stdout} = await exec(process.execPath, [PAGE, ...args],
-    {timeout:20000, maxBuffer:4 * 1024 * 1024});
-  return stdout.trim();
+  return bridge.command(...args);
 }
 
 async function findTab() {
-  while (!stopped) {
-    let listing = '';
-    try { listing = await page('tabs'); } catch { await sleep(5000); continue; }
-    const rows = listing.split('\n').map(line => ({id:line.match(/\[(\d+)\]/)?.[1],
-      url:line.match(/https?:\/\/\S+/)?.[0]})).filter(row => row.id && row.url);
+  while (!scope.aborted) {
+    const rows = await bridge.tabs();
     const candidates = rows.filter(row => /^https:\/\/(?:i|mooc1(?:-[a-z0-9]+)?|mooc2-ans)\.chaoxing\.com\//.test(row.url));
-    const study = candidates.find(row => row.url.includes('/mycourse/studentstudy'));
+    const studies = candidates.filter(row => row.url.includes('/mycourse/studentstudy'));
+    if (!tabArg && studies.length > 1) throw new Error('发现多个学习章节，请使用 --tab 明确选择目标标签');
+    const study = studies[0];
     const directories = candidates.filter(row => /\/mycourse\/(stu|studentcourse)/.test(row.url));
-    const selected = tabArg ? rows.find(row => row.id === tabArg) :
+    const selected = tabArg ? candidates.find(row => row.id === tabArg) :
       study || (directories.length === 1 ? directories[0] : null) ||
       (candidates.length === 1 ? candidates[0] : null);
     if (selected) return selected;
@@ -61,26 +68,27 @@ async function findTab() {
 }
 
 async function prepareStudyTab(tab) {
-  if (/^https:\/\/mooc1(?:-[a-z0-9]+)?\.chaoxing\.com\/mycourse\/studentstudy/.test(tab.url)) return tab.id;
+  const isStudy=/^https:\/\/mooc1(?:-[a-z0-9]+)?\.chaoxing\.com\/mycourse\/studentstudy/.test(tab.url);
+  if(isStudy && !existsSync(COURSE_FILE))return tab.id;
   if (!existsSync(COURSE_FILE)) throw new Error('自动发现章节需要 chaoxing-courses.json 一次性课程配置');
   const config = JSON.parse(readFileSync(COURSE_FILE, 'utf8'));
   if (config.schemaVersion !== 1 || !Array.isArray(config.courses) || !config.courses.length)
     throw new Error('课程配置无效');
   let index = 0;
   try {
-    const checkpoint = JSON.parse(readFileSync(join(OUT, 'schedule.json'), 'utf8'));
-    if (checkpoint.schemaVersion === 1 && checkpoint.status === 'running') index = checkpoint.index;
+    const checkpoint = JSON.parse(readFileSync(process.env.CX_SCHEDULE_PATH || join(OUT, 'schedule.json'), 'utf8'));
+    if (checkpoint.schemaVersion === 1 && Number.isInteger(checkpoint.index)) index = checkpoint.index;
   } catch { /* first run */ }
   const course = config.courses[index];
   if (!course) throw new Error('课程队列已到末尾');
+  if(isStudy && (!config.autoDiscovered || new URL(tab.url).searchParams.get('courseId')===course.courseId))return tab.id;
   const visit = new URL('https://mooc1.chaoxing.com/visit/stucoursemiddle');
   visit.search = new URLSearchParams({courseid:course.courseId, clazzid:course.clazzId,
     cpi:config.cpi, ismooc2:'1', v:'2'}).toString();
   await page('navigate', String(visit), '--tab', tab.id);
   let enc = '';
   for (let i = 0; i < 30; i++) {
-    const listing = await page('tabs');
-    const url = listing.split('\n').find(row => row.includes(`[${tab.id}]`))?.match(/https?:\/\/\S+/)?.[0] || '';
+    const url = await bridge.url(tab.id);
     if (url.includes('/mycourse/stu')) { enc = new URL(url).searchParams.get('enc') || ''; break; }
     await sleep(1000);
   }
@@ -90,8 +98,7 @@ async function prepareStudyTab(tab) {
     enc, cpi:config.cpi, v:'2'}).toString();
   await page('navigate', String(directory), '--tab', tab.id);
   for (let i = 0; i < 30; i++) {
-    const listing = await page('tabs');
-    if (listing.split('\n').some(row => row.includes(`[${tab.id}]`) && row.includes('/mycourse/studentcourse'))) break;
+    if ((await bridge.url(tab.id)).includes('/mycourse/studentcourse')) break;
     await sleep(1000);
   }
   const details = JSON.parse(await page('eval', `(() => {
@@ -104,7 +111,11 @@ async function prepareStudyTab(tab) {
       || !/^[a-f0-9]+$/i.test(details.enc))
     throw new Error('课程目录与配置不一致，无法自动打开首章');
   const study = new URL('https://mooc1.chaoxing.com/mycourse/studentstudy');
-  study.search = new URLSearchParams({chapterId:course.firstChapterId, courseId:course.courseId,
+  let resumeChapter=course.firstChapterId;
+  try{const runtime=JSON.parse(readFileSync(join(OUT,'runtime.json'),'utf8'));
+    if(runtime.courseId===course.courseId && /^\d+$/.test(runtime.chapterId))resumeChapter=runtime.chapterId;
+  }catch{}
+  study.search = new URLSearchParams({chapterId:resumeChapter, courseId:course.courseId,
     clazzid:course.clazzId, cpi:config.cpi, enc:details.enc, mooc2:'1'}).toString();
   await page('navigate', String(study), '--tab', tab.id);
   emit({event:'course-opened', courseId:course.courseId, tab:tab.id});
@@ -118,13 +129,15 @@ async function child(script, args) {
   return lines.length ? JSON.parse(lines.at(-1)) : null;
 }
 
-async function submit(tab, report) {
+async function submit(tab, report, verifyOnly=false) {
   const runPhase = async phase => {
     const raw = await page('eval', `${SUBMIT}(${JSON.stringify({phase, reportId:report.id,
       jobId:report.jobId, chapterId:report.chapterId})})`,
       '--world', 'MAIN', '--tab', tab);
     return JSON.parse(raw);
   };
+  if(verifyOnly) return Boolean((await runPhase('status')).completed);
+  journal.write(report.id,'submitting',{tab,chapterId:report.chapterId});
   const opened = await runPhase('open');
   if (!opened.ok) throw new Error(`打开提交确认失败：${opened.reason}`);
   let confirmed = false;
@@ -136,41 +149,70 @@ async function submit(tab, report) {
   if (!confirmed) throw new Error('未找到可用的提交确认按钮');
   for (let i = 0; i < 60; i++) {
     await sleep(1000);
+    scope.assertActive();
     try { if ((await runPhase('status')).completed) return; } catch { /* page changing */ }
   }
   throw new Error('提交后平台未确认测验完成');
 }
 
 async function handleQuiz(event) {
+  if(process.env.CX_AUTO_ANSWER==='0'){
+    emit({event:'answer-disabled',tab:event.tab,id:event.id,reason:'自动答题已关闭，等待手动作答'});
+    return;
+  }
+  if (scope.aborted) return;
   const key = `${event.tab}:${event.id}`;
   if (handled.has(key) || busy.has(key)) return;
   busy.add(key);
   let report;
   try {
     report = JSON.parse(readFileSync(event.report, 'utf8'));
-    await child('chaoxing-answer-worker.mjs', ['--once', `--report=${event.report}`]);
+    const previous=journal.read(report.id);
+    if(previous && ['submitting','submitted'].includes(previous.phase)) {
+      if(await submit(event.tab,report,true)) {
+        journal.write(report.id,'submitted',{tab:event.tab,recovered:true});
+        handled.add(key);
+        emit({event:'quiz-submitted',tab:event.tab,id:event.id,recovered:true});
+        return;
+      }
+      throw new Error('此前可能已提交该测验，平台尚未确认；请人工核验，系统不会重复提交');
+    }
+    journal.write(report.id,'solving',{tab:event.tab});
+    await child('chaoxing-answer-worker.mjs', ['--once', `--report=${event.report}`,...(event.forceModel?['--force']:[])]);
     const answer = join(dirname(event.report), `answer-${event.report.match(/quiz-([a-f0-9]{16})\.json$/)?.[1]}.json`);
     const proposal = JSON.parse(readFileSync(answer, 'utf8'));
     emit({event:'answer-proposal', report:event.report, answer,
       model:proposal.model, status:proposal.status, count:proposal.answers?.length || 0});
     if (proposal.status !== 'ready') {
+      if(process.env.CX_SKIP_QUIZ_ERRORS!=='1' && proposal.answers.some(answer=>answer.needsReview===false && answer.answerValues?.length)) {
+        journal.write(report.id,'filling',{tab:event.tab,partial:true});
+        const partial=await child('chaoxing-page-filler.mjs',[`--answer=${answer}`,`--tab=${event.tab}`,'--apply']);
+        emit({event:'quiz-partially-filled',tab:event.tab,id:event.id,filled:partial.filled?.length || 0,
+          skipped:partial.skipped?.length || 0,failed:partial.failed?.length || 0,submitted:false});
+        journal.write(report.id,'needs-review',{tab:event.tab,partial:true});
+      }
       const pending = proposal.answers.filter(answer => answer.needsReview)
         .map(answer => `第 ${answer.index} 题：${answer.explanation.slice(0, 120)}`);
       throw new Error(`模型答案需复核；${pending.join('；')}`);
     }
+    journal.write(report.id,'ready',{tab:event.tab,sourceHash:proposal.sourceHash});
+    journal.write(report.id,'filling',{tab:event.tab,sourceHash:proposal.sourceHash});
     const filled = await child('chaoxing-page-filler.mjs', [`--answer=${answer}`, `--tab=${event.tab}`, '--apply']);
     if (filled?.event !== 'fill-result' || filled.failed?.length || filled.skipped?.length
         || filled.filled?.length !== report.questions.length) throw new Error('页面填写未全部确认');
+    journal.write(report.id,'filled',{tab:event.tab,sourceHash:proposal.sourceHash});
     await submit(event.tab, report);
+    journal.write(report.id,'submitted',{tab:event.tab,sourceHash:proposal.sourceHash});
     handled.add(key);
     emit({event:'quiz-submitted', tab:event.tab, id:event.id, questions:report.questions.length});
   } catch (error) {
+    if (scope.aborted) return;
     const reason = String(error.message || error);
     const retries = retryCount.get(key) || 0;
     if (!stopped && retries < 1 && /timeout|timed out|HTTP (429|500|502|503|504)/i.test(reason)) {
       retryCount.set(key, retries + 1);
       emit({event:'quiz-retry', tab:event.tab, id:event.id, reason:'模型请求暂时失败，30 秒后重试'});
-      setTimeout(() => { if (!stopped) void handleQuiz(event); }, 30000);
+      setTimeout(() => { if (!scope.aborted) void handleQuiz(event); }, 30000).unref();
     } else {
       handled.add(key);
       emit({event:'needs-review', tab:event.tab, id:event.id,
@@ -189,9 +231,11 @@ async function main() {
   emit({event:'waiting-for-login'});
   const tab = await prepareStudyTab(await findTab());
   const args = ['--start', `--tab=${tab}`];
+  if(process.argv.includes('--restart-page'))args.push('--restart-page');
   if (existsSync(COURSE_FILE)) args.push('--schedule');
-  const controller = spawn(process.execPath, [join(HERE, 'chaoxing-quiz-control.mjs'), ...args],
-    {env:process.env, stdio:['ignore','pipe','pipe']});
+  scope.assertActive();
+  const controller = scope.track(spawn(process.execPath, [join(HERE, 'chaoxing-quiz-control.mjs'), ...args],
+    {env:process.env, windowsHide:true, stdio:['ignore','pipe','pipe','ipc']}));
   let buffer = '';
   controller.stdout.on('data', chunk => {
     buffer += chunk;
@@ -201,15 +245,24 @@ async function main() {
       let event;
       try { event = JSON.parse(line); } catch { continue; }
       emit(event);
-      if (event.event === 'quiz') void handleQuiz(event);
+      if (event.event === 'quiz') {quizEvents.set(event.id,event);void handleQuiz(event);}
     }
   });
   controller.stderr.on('data', chunk => process.stderr.write(chunk));
-  const stop = () => { stopped = true; controller.kill('SIGTERM'); };
+  const stop = () => { stopped = true; scope.cancel(); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+  process.on('message', message => {if(message?.type === 'cancel') stop();});
+  process.on('message',message=>{
+    if(message?.type!=='retry-quiz' || scope.aborted)return;
+    const event=quizEvents.get(message.reportId);if(!event)return;
+    const key=`${event.tab}:${event.id}`;if(busy.has(key))return;
+    handled.delete(key);retryCount.delete(key);
+    void handleQuiz({...event,forceModel:Boolean(message.forceModel)});
+  });
   const code = await new Promise(resolve => controller.on('close', resolve));
-  if (!stopped) throw new Error(`控制端退出：${code}`);
+  if (!scope.aborted) { scope.cancel(); throw new Error(`控制端退出：${code}`); }
 }
 
-main().catch(error => { process.stderr.write(`${error.stack || error}\n`); process.exitCode = 1; });
+main().catch(error => { scope.cancel(); process.stderr.write(`${error.stack || error}\n`); process.exitCode = 1; })
+  .finally(async () => {await scope.drain();if(process.connected)process.disconnect();});

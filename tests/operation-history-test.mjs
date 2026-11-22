@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {operationHistory} from '../lib/operation-history.mjs';
+const dir=mkdtempSync(join(tmpdir(),'cx-operation-history-'));
+writeFileSync(join(dir,'recovery-events.jsonl.1'),JSON.stringify({at:'2026-01-01',courseId:'1',chapterId:'2',action:'reload',reason:'加载超时',source:'model'})+'\ninvalid');
+writeFileSync(join(dir,'skipped-quizzes.jsonl'),JSON.stringify({at:'2026-01-02',courseId:'1',chapterId:'2',status:'deferred',reason:'跳过'})+'\n');
+const rows=operationHistory(dir);
+assert.equal(rows.length,2);assert.equal(rows[0].result,'已进入下一节');
+assert.equal(rows[1].source,'model');assert.equal(rows[1].result,'已选择动作，等待后续核验');
+writeFileSync(join(dir,'recovery-events.jsonl'),Array.from({length:60},(_,i)=>JSON.stringify({at:`2026-02-${String(i).padStart(2,'0')}`,action:'retry'})).join('\n'));
+assert.equal(operationHistory(dir).length,50);
+console.log('PASS: rotated operation history, malformed line recovery, decision/result distinction and bounded output');

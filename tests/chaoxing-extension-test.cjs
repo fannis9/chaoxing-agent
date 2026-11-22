@@ -7,7 +7,7 @@ const dir = path.join(__dirname,'..','extension');
 const manifest = JSON.parse(fs.readFileSync(path.join(dir,'manifest.json'),'utf8'));
 assert.equal(manifest.manifest_version,3);
 assert.deepEqual(manifest.host_permissions,
-  ['https://chaoxing.com/*','https://*.chaoxing.com/*','http://127.0.0.1:8788/*']);
+  ['https://chaoxing.com/*','https://*.chaoxing.com/*','http://127.0.0.1/*']);
 assert.equal(manifest.content_scripts,undefined);
 let updated;
 const settings=[];
@@ -48,6 +48,7 @@ vm.runInNewContext(fs.readFileSync(path.join(dir,'background.js'),'utf8'),{chrom
 async function testPanelReadsExistingTab() {
   const elements = new Map();
   const node = () => ({textContent:'',children:[],
+    setAttribute(name,value){this[name]=value;},
     append(...items) {this.children.push(...items);},
     replaceChildren() {this.children=[];},
     classList:{toggle:() => {},remove:() => {}},addEventListener:() => {}});

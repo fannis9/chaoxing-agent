@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {QuizJournal} from '../lib/quiz-journal.mjs';
+const directory=mkdtempSync(join(tmpdir(),'cx-journal-'));
+const first=new QuizJournal(directory);
+assert.equal(first.read('quiz'),null);
+first.write('quiz','submitting',{tab:'77'});
+const restarted=new QuizJournal(directory);
+assert.equal(restarted.read('quiz').phase,'submitting');
+assert.equal(restarted.read('quiz').tab,'77');
+writeFileSync(first.path('quiz'),'{broken');
+assert.throws(()=>restarted.read('quiz'));
+console.log('PASS: submission intent survives restart and corrupt state fails closed');

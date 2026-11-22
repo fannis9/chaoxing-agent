@@ -30,12 +30,16 @@ const {chromium} = require('playwright-core');
     });
     const run = payload => page.evaluate(`${code}(${JSON.stringify(payload)})`);
     const base = {reportId:'course:chapter:job',jobId:'job',chapterId:'chapter'};
+    await page.evaluate(()=>window.__cxV3.status='running');
+    assert.equal((await run({...base,phase:'status'})).completed,false,'running alone is not completion evidence');
+    await page.evaluate(()=>window.__cxV3.status='waiting-quiz');
     assert.equal((await run({...base,reportId:'wrong',phase:'open'})).ok,false);
     assert.equal(await page.evaluate(() => window.opened),0);
     assert.equal((await run({...base,phase:'open'})).ok,true);
     assert.equal((await run({...base,phase:'confirm'})).ok,true);
     assert.equal((await run({...base,phase:'status'})).completed,true);
     assert.equal(await page.evaluate(() => window.confirmed),true);
+    assert.equal((await run({...base,chapterId:'different',phase:'status'})).completed,false,'changing chapter is not completion evidence');
     console.log(JSON.stringify({autoSubmit:'verified',wrongReportRejected:true}));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode=1; });

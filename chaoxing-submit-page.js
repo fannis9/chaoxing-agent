@@ -16,8 +16,7 @@
     try { return view.AttachmentSetting?.attachments || []; } catch { return []; }
   }).find(item => item?.type === 'workid' && String(item.jobid || '') === payload.jobId);
   if (payload.phase === 'status') return {ok:true,
-    completed:work?.job === false || window.__cxV3?.status === 'running'
-      || new URL(location.href).searchParams.get('chapterId') !== payload.chapterId};
+    completed:new URL(location.href).searchParams.get('chapterId') === payload.chapterId && work?.job === false};
   const current = JSON.parse(document.getElementById('cx-v3-quiz-report')?.textContent || 'null');
   if (current?.id !== payload.reportId || current.jobId !== payload.jobId
       || window.__cxV3?.status !== 'waiting-quiz')

@@ -8,16 +8,69 @@
   <header><h1>学习通控制台</h1><button id="refresh" class="quiet" title="刷新状态">刷新</button></header>
   <p id="page">正在读取页面…</p>
   <p id="chapter"></p>
-  <section><h2>连接状态</h2><div id="connection">正在连接本机控制端…</div></section>
+  <section><h2>全自动模式</h2><p id="automationStatus">等待控制台</p>
+    <button id="toggleAutomation">自动刷课：关闭</button>
+    <button id="toggleAnswer">自动答题：开启</button>
+    <p>关闭自动答题后，遇到测验等待你手动作答；不会自动填写或提交。关闭自动刷课停止课程队列，答题开关的选择会保留。</p>
+    <p>自动发现未结束课程。手动暂停后会保持暂停，点击继续恢复。</p>
+    <details><summary>课程与待补做汇总</summary><div id="automationSummary"></div></details>
+  </section>
+  <section><details><summary>恢复设置</summary>
+    <label>视频加载等待（秒，15–600）<input id="videoLoadSeconds" type="number" min="15" max="600" value="60"></label>
+    <label>视频无进度等待（秒，30–1800）<input id="videoStallSeconds" type="number" min="30" max="1800" value="180"></label>
+    <label>每章恢复次数（1–5）<input id="retryLimit" type="number" min="1" max="5" value="2"></label>
+    <label class="check-line"><input id="skipVideo" type="checkbox">恢复次数用尽后允许跳过视频（默认关闭）</label>
+    <p>关闭自动跳过时，恢复失败会暂停等待你处理。保存后当前任务重新加载设置。</p>
+    <button id="saveRecoverySettings">保存恢复设置</button><p id="recoverySettingsMessage" role="status"></p>
+  </details></section>
+  <section><details id="setupSection" open><summary>首次配置检查</summary><ol id="setupChecklist"><li>启动本机控制台并完成配对</li></ol></details></section>
+  <section><h2>连接状态</h2><div id="connection">正在连接本机控制端…</div>
+    <details><summary>连接设置</summary>
+      <p>首次连接：读取本机 quiz-reports/console-token，将令牌粘贴到此处。令牌仅保存在此浏览器本地。</p>
+      <label>配对令牌<input id="consoleToken" type="password" autocomplete="off"></label>
+      <label>本机控制台端口<input id="consolePort" type="number" min="1" max="65535" value="8788"></label>
+      <button id="pairConsole">保存配对</button>
+    </details>
+  </section>
   <section><h2>当前任务</h2><div id="status">等待页面状态</div></section>
   <section class="task-card"><h2>视频任务</h2><div id="video">等待章节状态</div><progress id="videoProgress" max="100" value="0" hidden></progress></section>
   <section class="task-card"><h2>解题任务</h2><div id="quiz">当前没有待处理测验</div></section>
+  <section class="task-card"><details id="reviewSection"><summary>人工复核</summary>
+    <p>先暂停队列，核对原页面题目后修正答案。保存只更新本地建议；继续队列会填写并提交已确认的答案。</p>
+    <button id="loadReviews">读取待复核报告</button><div id="reviewList"></div>
+    <div id="reviewEditor" hidden><h3 id="reviewTitle"></h3><div id="reviewQuestions"></div>
+      <label class="check-line"><input id="reviewAcknowledge" type="checkbox">我已在原页面核对报告中缺失的图片或字体</label>
+      <div class="actions"><button id="saveReview">保存复核结果</button><button id="retryReview">重新请求模型</button><button id="deferReview">稍后复核</button></div>
+    </div><div id="reviewMessage" role="status"></div>
+  </details></section>
   <section><h2>自动流程</h2><div id="automatic">等待调度器</div></section>
+  <section><details><summary>课程队列设置</summary>
+    <p>从当前课程读取编号与章节；核实首末任务章节和任务点总数后加入队列。读取不会跳转页面或开始任务。</p>
+    <button id="importCourse">读取当前课程</button>
+    <div id="coursePreview" hidden>
+      <label>课程名称<input id="courseName"></label>
+      <label>首个任务章节<select id="firstChapter"></select></label>
+      <label>最后任务章节<select id="lastChapter"></select></label>
+      <label>目录显示的任务点总数<input id="expectedTasks" type="number" min="1"></label>
+      <button id="addCourse">加入待保存队列</button>
+    </div>
+    <ol id="courseQueue"></ol><button id="saveCourses">保存队列</button>
+    <p>保存会替换课程配置并保留上一个配置的备份。已有运行检查点不会被清除。</p>
+  </details></section>
   <section><h2>最近日志</h2><pre id="log">暂无日志</pre></section>
+  <section><details><summary>诊断与存储维护</summary>
+    <button id="exportDiagnostics">导出脱敏诊断</button>
+    <label>已完成报告保留天数<input id="retentionDays" type="number" min="1" max="3650" value="30"></label>
+    <div class="actions"><button id="previewArchive">预览归档</button><button id="applyArchive" disabled>归档已完成报告</button></div>
+    <p>仅归档超过保留期限、已确认提交的报告。未完成任务和检查点保留；归档可从本机 archive 目录恢复。事件日志每份最多约 5 MB，保留三份历史日志。</p>
+    <div id="maintenanceMessage" role="status"></div>
+  </details></section>
   <section><h2>模型配置</h2><div id="modelStatus">正在读取…</div>
     <label>模型名称<input id="modelName"></label><label>模型 ID<input id="modelId"></label>
     <label>API 基础地址<input id="baseUrl"></label><label>密钥环境变量<input id="keyEnv"></label>
-    <div class="actions"><button id="saveModel">保存配置</button><button id="testModel">测试连接</button></div></section>
+    <label>接口协议<select id="modelProtocol"><option value="responses">Responses</option><option value="chat-completions">Chat Completions</option></select></label>
+    <div class="actions"><button id="saveModel">保存配置</button><button id="testModel">检测模型能力</button></div>
+    <div id="modelCapabilities" role="status"></div></section>
   <section><h2>模型对话</h2><div id="conversation"></div>
     <textarea id="prompt" rows="3" placeholder="输入消息"></textarea>
     <div class="actions"><button id="send">发送</button><button id="clearChat">新对话</button></div></section>
@@ -28,4 +81,7 @@
 </footer>
 <script src="snapshot.js"></script>
 <script src="panel.js"></script>
+<script src="review.js"></script>
+<script src="maintenance.js"></script>
+<script src="recovery-settings.js"></script>
 </html>

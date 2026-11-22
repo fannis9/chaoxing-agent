@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,writeFileSync,existsSync,readFileSync,utimesSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {appendRotating,archivePlan,archiveReports,diagnostics} from '../lib/maintenance.mjs';
+import {QuizJournal} from '../lib/quiz-journal.mjs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const directory=mkdtempSync(join(tmpdir(),'cx-maintenance-')),log=join(directory,'events.jsonl');
+for(let i=0;i<10;i++)appendRotating(log,`${i}:abcdef\n`,{maxBytes:15,backups:2});
+assert(existsSync(`${log}.1`));assert(existsSync(`${log}.2`));assert(!existsSync(`${log}.3`));
+assert(readFileSync(log,'utf8').includes('9:'));
+const key='0123456789abcdef',name=`quiz-${key}.json`;
+writeFileSync(join(directory,name),JSON.stringify({id:'quiz',private:'secret-question'}));
+const old=new Date(Date.now()-40*86400000);utimesSync(join(directory,name),old,old);
+assert.equal(archivePlan(directory,30).files.length,0,'pending reports must be retained');
+new QuizJournal(directory).write('quiz','submitted');
+assert.equal(archivePlan(directory,30).files.length,1);
+const safe=JSON.stringify(diagnostics(directory,{messages:[{text:'secret-chat'}],model:{keyEnv:'UNKNOWN'}}));
+assert(!safe.includes('secret'));assert(!safe.includes(directory));
+const result=archiveReports(directory,30);
+assert.equal(result.count,1);assert(existsSync(join(directory,'archive',result.archive,name)));
+assert(existsSync(new QuizJournal(directory).path('quiz')),'phase records must survive archive');
+assert.throws(()=>archivePlan(directory,0),/天数/);
+const controller=fileURLToPath(new URL('../chaoxing-quiz-control.mjs',import.meta.url));
+writeFileSync(join(directory,'controller.log'),'x'.repeat(5*1024*1024));
+const daemon=spawnSync(process.execPath,[controller,'--status','--daemon-log'],{
+ env:{...process.env,CX_QUIZ_REPORT_DIR:directory},encoding:'utf8',timeout:10000});
+assert.equal(daemon.status,0,daemon.stderr);
+assert.equal(daemon.stdout,'');
+assert(existsSync(join(directory,'controller.log.1')));
+assert.match(readFileSync(join(directory,'controller.log'),'utf8'),/no-checkpoint/);
+const badSchedule=spawnSync(process.execPath,[controller,'--schedule','--daemon-log'],{
+ env:{...process.env,CX_QUIZ_REPORT_DIR:directory,CX_COURSE_CONFIG:join(directory,'missing.json')},encoding:'utf8',timeout:10000});
+assert.equal(badSchedule.status,1);
+assert.match(readFileSync(join(directory,'controller.log'),'utf8'),/ENOENT/,'startup errors must be retained in daemon log');
+console.log('PASS: bounded logs, pending-report retention, recoverable archive and private-data-free diagnostics');

@@ -104,7 +104,7 @@ const {chromium} = require('playwright-core');
       answerValues:[['B','简答','填空'][i]],needsReview:false}))};
   fs.writeFileSync(answerPath, JSON.stringify(answer));
   const mock = path.join(dir,'mock-page.mjs');
-  fs.writeFileSync(mock, `if(process.argv[2]==='tabs') console.log('* [77] https://mooc1.chaoxing.com/mycourse/studentstudy?courseId=course&chapterId=chapter');
+  fs.writeFileSync(mock, `if(process.argv[2]==='tabs') console.log(JSON.stringify([{id:77,url:'https://mooc1.chaoxing.com/mycourse/studentstudy?courseId=course&chapterId=chapter'}]));
 else if(process.argv[2]==='eval') console.log(JSON.stringify({ok:true,checked:3,issues:[]}));`);
   const command = (args=[]) => spawnSync(process.execPath,
     [path.join(__dirname,'..','chaoxing-page-filler.mjs'),`--answer=${answerPath}`,...args],
@@ -118,7 +118,7 @@ else if(process.argv[2]==='eval') console.log(JSON.stringify({ok:true,checked:3,
   assert.equal(result.event,'fill-result');
   assert.equal(result.filled.length,3);
   assert.equal(result.submitted,false);
-  assert.equal(fs.statSync(result.audit).mode & 0o777,0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(result.audit).mode & 0o777,0o600);
   answer.sourceHash = 'wrong';
   fs.writeFileSync(answerPath,JSON.stringify(answer));
   const rejected = command();

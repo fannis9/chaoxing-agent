@@ -1,6 +1,7 @@
 node_modules/
 quiz-reports/
 chaoxing-courses.json
+chaoxing-courses.json.backup
 *.log
 *.out
 *.b64

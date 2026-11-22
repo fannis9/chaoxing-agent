@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "private": false,
   "type": "module",
-  "engines": {"node": ">=20"},
+  "engines": {"node": ">=22"},
   "scripts": {
-    "test": "node tests/chaoxing-v3-smoke.cjs && node tests/chaoxing-quiz-control-test.mjs && node tests/chaoxing-schedule-test.mjs && node tests/chaoxing-answer-worker-test.mjs && node tests/chaoxing-page-filler-test.cjs && node tests/chaoxing-auto-submit-test.cjs && node tests/chaoxing-auto-discovery-test.mjs && node tests/chaoxing-extension-test.cjs"
+    "test": "node dev/test.mjs",
+    "console": "node dev/console.mjs",
+    "doctor": "node doctor.mjs",
+    "build:scripts": "node dev/build-scripts.mjs",
+    "service:files": "node dev/service-files.mjs"
   },
-  "devDependencies": {
+  "dependencies": {
     "playwright-core": "^1.65.1"
   }
 }

@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {BridgeClient} from '../lib/bridge-client.mjs';
+let calls=[];
+const client=new BridgeClient(async(file,args)=>{calls.push(args);return {stdout:JSON.stringify([{id:77,title:'[88] https://wrong.example',url:'https://i.chaoxing.com/base'}])};});
+assert.equal((await client.tabs())[0].id,'77');
+assert.deepEqual(calls[0].slice(1),['tabs','--json']);
+assert.equal(await client.url(77),'https://i.chaoxing.com/base');
+await assert.rejects(new BridgeClient(async()=>({stdout:'[77] text'})).tabs(),/更新桥接/);
+await assert.rejects(new BridgeClient(async()=>({stdout:'[{"id":"77","url":"x"}]'})).tabs(),/协议不兼容/);
+assert.deepEqual(await new BridgeClient(async()=>{throw new Error('找不到目标标签页：完全接管模式下默认用当前活动标签页，也可显式传 tabId')}).tabs(),[]);
+await assert.rejects(new BridgeClient(async()=>{throw new Error('尚未共享标签页')}).tabs(),/尚未共享/);
+console.log('PASS: structured tabs ignore misleading titles and reject incompatible bridges');

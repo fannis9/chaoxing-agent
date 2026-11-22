@@ -1,12 +1,14 @@
 # 学习通 PageBridge 控制端
 
+> 本地工程化版本正在实施。安装、配对和 Windows 使用见 [本地安装说明](docs/LOCAL-SETUP.md)，完整验收清单见 [IMPLEMENTATION.md](IMPLEMENTATION.md)。控制台现在要求配对令牌；不确定答案进入复核，不再随机猜选。
+
 基于 [PageBridge](https://github.com/fannis9/pagebridge) 控制同一个已登录的 Chrome 标签，串行处理学习通章节任务，并将测验交给当前控制会话处理。项目包含页面脚本、监听控制端、跨课程队列和只读长时监测工具。
 
 > 手动模式会报告测验并等待。自动模式能完成答题、填写和提交；验证码、登录验证、未知任务和状态冲突会暂停。页面结构可能变化；请先在自己的授权环境中测试。
 
 ## 登录后自动运行
 
-一次性准备 `chaoxing-courses.json`（可从 `chaoxing-courses.example.json` 复制）和 `.env`（可从 `.env.example` 复制）。在 `.env` 填入自己的模型接口、模型 ID、密钥变量及 PageBridge 路径。DeepSeek 当前的 Responses API 地址是 `https://api.deepseek.com`，图像题可选 `deepseek-flash`；配置示例已填好非密钥字段。曾在聊天中发送过的密钥应吊销并换新。
+一次性准备 `chaoxing-courses.json`（可从 `chaoxing-courses.example.json` 复制）和 `.env`（可从 `.env.example` 复制）。在 `.env` 填入自己的模型接口、模型 ID、密钥变量及 PageBridge 路径。根据供应商配置 Responses 或 Chat Completions 协议，并在侧栏检测文本、结构化输出和图片请求能力。示例不预填供应商或模型；密钥仅在本机填写。
 
 ```bash
 node --env-file=.env chaoxing-auto.mjs
@@ -15,7 +17,7 @@ node --env-file=.env chaoxing-auto.mjs
 进程会等待登录，发现唯一的学习通标签后按课程配置进入章节，启动课程控制端。遇到测验时依次调用答题进程、页面填答器和页面提交控件；只有所有题目都有可用答案、填写全部确认后才提交，并等待平台确认完成。任何题目需复核、页面结构不符、模型接口失败或平台不确认时，写入 `quiz-reports/auto-events.jsonl` 并停在该测验。`--tab=<标签ID>` 可指定标签。首次配置课程、模型与 PageBridge 授权后，日常只需保持此进程运行并登录学习通。
 
 测验题目加载后，页面脚本生成报告，答题工作进程将题目及可读取图片交给已配置的模型，校验答案映射后由页面填答器填写。题目 iframe 最多等待 60 秒；如果仍无法读取题目，控制端报告加载错误并停在当前节，避免提交空答案或留下未完成测验。历史待补做记录保留在 `quiz-reports/deferred-quizzes.jsonl`。
-对单选或判断题，若模型留空且页面选项和填答控件完整，工作进程会随机选一个并在答案记录中标明；若模型给了低可信候选而题目素材抓取不完整，会优先使用该候选。填空、简答和选项映射不完整的题目仍需复核。随机选项可能影响测验得分。
+模型弃答、低置信度或题目素材不完整时，结果标记为需复核。系统不再随机选择选项，也不会将这些结果自动提交。答案策略版本升级后，旧答案缓存将重新生成。
 
 若希望电脑登录后自动启动此进程，可将 `chaoxing-auto.service.example` 中的仓库绝对路径替换为本机路径，安装为用户级 systemd 服务。服务会等待学习通登录，不会保存学习通密码。
 
@@ -39,7 +41,7 @@ flowchart LR
 
 - **页面脚本** [`chaoxing-autoplay-v3.js`](chaoxing-autoplay-v3.js)：在当前章节识别文档、视频、测验；逐项等待平台任务状态确认，再点下一节。只使用页面播放器，不伪造视频进度上报。隐藏任务标签中的视频也按播放器状态处理。浏览器 Web Lock 防止同源多标签同时启动。
 - **控制端** [`chaoxing-quiz-control.mjs`](chaoxing-quiz-control.mjs)：通过 PageBridge 读取页面状态、保存题目 JSON/HTML/PNG、意外刷新后重注入、记录异常，并报告答题工作进程的结果。
-- **答题工作进程** [`chaoxing-answer-worker.mjs`](chaoxing-answer-worker.mjs)：独立扫描本地测验报告，调用 OpenAI Responses API，校验题目 ID 和答案格式，再写入本地答案建议文件。它不连接浏览器，也不提交测验。
+- **答题工作进程** [`chaoxing-answer-worker.mjs`](chaoxing-answer-worker.mjs)：独立扫描本地测验报告，通过共享适配器调用 Responses 或 Chat Completions API，校验题目 ID 和答案格式，再写入本地答案建议文件。它不连接浏览器，也不提交测验。
 - **页面填答器** [`chaoxing-page-filler.mjs`](chaoxing-page-filler.mjs)：经 PageBridge 核对课程、章节、测验和题目控件，将已确认可填的答案写入原页面，并生成本地填写记录。
 - **自动调度器** [`chaoxing-auto.mjs`](chaoxing-auto.mjs)：登录后发现课程，串行运行控制端、模型答题、页面填写与提交；遇到不确定状态停下并记录。
 - **调度器**：控制端在当前课程最后任务章节停下，打开课程目录核对「已完成任务点」总数；核对成功才在同一标签进入下一门课。队列只按一门一门执行。
@@ -47,7 +49,7 @@ flowchart LR
 
 ## 准备
 
-1. 安装 Node.js 20+、Chrome 和 [PageBridge](https://github.com/fannis9/pagebridge)。PageBridge 需要能够对学习页执行 `--world MAIN`；扩展的「完全接管」由用户在浏览器中开启。
+1. 安装 Node.js 22+、Chrome/Edge 和 [PageBridge](https://github.com/fannis9/pagebridge)。PageBridge 需要能够对学习页执行 `--world MAIN`；扩展的「完全接管」由用户在浏览器中开启。
 2. 在本目录运行 `npm install`。`playwright-core` 用于生成本地测验预览图和运行隔离测试，不负责连接真实浏览器。
 3. 在已登录的 Chrome 标签打开 `https://mooc1.chaoxing.com/mycourse/studentstudy?...`。先停止其他学习通脚本，避免并发。
 4. 如需跨课程，复制 `chaoxing-courses.example.json` 为 `chaoxing-courses.json`，填入自己课程的 `cpi`、课程 ID、班级 ID、首末任务章节 ID 和课程目录显示的任务点总数。此文件被 Git 忽略。

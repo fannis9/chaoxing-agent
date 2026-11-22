@@ -247,6 +247,19 @@ const { chromium } = require('playwright-core');
     assert.deepStrictEqual(reloadedQuiz, {status:'limit', completed:1, nextCalls:0, reportPresent:false});
     console.log(JSON.stringify({reloadedQuizCase:reloadedQuiz}));
 
+    const delayedPage = await context.newPage();
+    await delayedPage.goto('https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=delayed-marker');
+    await delayedPage.evaluate(() => {
+      document.body.insertAdjacentHTML('beforeend','<div class="ans-attach-ct"><iframe jobid="delayed-video"></iframe></div>');
+      window.AttachmentSetting={attachments:[{jobid:'delayed-video',type:'video',isPassed:true}]};
+      window.__nextCalls=0;window.PCount={next:()=>window.__nextCalls++};
+      setTimeout(()=>document.querySelector('.ans-attach-ct').classList.add('ans-job-finished'),3000);
+    });
+    await delayedPage.evaluate(oneChapterScript);
+    await delayedPage.waitForFunction(()=>window.__cxV3?.status==='limit',null,{timeout:12000});
+    assert.equal(await delayedPage.evaluate(()=>window.__nextCalls),0);
+    console.log(JSON.stringify({delayedCompletionMarker:true}));
+
     const hiddenPage = await context.newPage();
     await hiddenPage.goto('https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=hidden-complete');
     await hiddenPage.evaluate(() => {

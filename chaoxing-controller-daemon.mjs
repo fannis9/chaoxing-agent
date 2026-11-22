@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Keep the PageBridge controller independent of an interactive terminal session.
 import {spawn} from 'node:child_process';
-import {closeSync, mkdirSync, openSync, readFileSync} from 'node:fs';
+import {mkdirSync, readFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -28,12 +28,10 @@ if (previous) {
   if (owner()) throw new Error('旧控制端未退出');
 }
 const log = join(out, 'controller.log');
-const fd = openSync(log, 'a', 0o600);
 const child = spawn(process.execPath,
-  [join(here, 'chaoxing-quiz-control.mjs'), '--start', '--schedule', `--tab=${tab}`],
-  {detached:true, stdio:['ignore',fd,fd]});
+  [join(here, 'chaoxing-quiz-control.mjs'), '--start', '--schedule', '--daemon-log', `--tab=${tab}`],
+  {detached:true, windowsHide:true, stdio:'ignore'});
 child.unref();
-closeSync(fd);
 for (let i = 0; i < 100; i++) {
   await sleep(100);
   if (owner() === child.pid) {

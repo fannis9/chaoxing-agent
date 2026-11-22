@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {Autopilot,initialAutomation} from '../lib/autopilot.mjs';
+let now=1000,launched=0,online=false,run=false,saved;
+const state=initialAutomation({},true);
+const hooks={now:()=>now,save:s=>{saved=JSON.parse(JSON.stringify(s))},running:()=>run,
+ prepare:async()=>online?{tab:'77'}:{wait:'waiting-login'},launch:async()=>{launched++;run=true}};
+const pilot=new Autopilot(state,hooks);
+await pilot.tick();assert.equal(state.status,'waiting-login');assert.equal(launched,0);
+online=true;now+=10000;await pilot.tick();assert.equal(launched,1);
+await pilot.setIntent(true,true);run=false;now+=10000;await pilot.tick();assert.equal(launched,1);
+const restarted=new Autopilot(initialAutomation(saved,true),hooks);await restarted.tick();assert.equal(launched,1,'manual pause survives restart');
+await pilot.setIntent(true,false);
+hooks.prepare=async()=>{throw new Error('bridge offline')};await pilot.tick();assert.equal(state.status,'retrying');
+const retry=state.retryAt;await pilot.tick();assert.equal(state.retryAt,retry);
+now=retry;await pilot.tick();assert.equal(state.failures,2);assert.equal(state.retryAt-now,10000);
+let resolve;hooks.prepare=()=>new Promise(r=>{resolve=r});now=state.retryAt;
+const pending=pilot.tick();await pilot.setIntent(true,true);resolve({tab:'77'});await pending;assert.equal(launched,1,'pause during discovery cancels launch');
+await pilot.setIntent(true,false);hooks.prepare=async()=>({complete:true,summary:{done:2,deferred:1}});await pilot.tick();assert.equal(state.status,'complete');
+await pilot.tick();assert.equal(launched,1);
+console.log('PASS: login waiting, persistent manual pause, backoff, cancellation and completion');

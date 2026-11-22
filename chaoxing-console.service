@@ -4,8 +4,9 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/fannis/codex_workspace/wall/chaoxing-pagebridge
-ExecStart=/usr/local/bin/node --env-file=/home/fannis/codex_workspace/wall/chaoxing-pagebridge/.env /home/fannis/codex_workspace/wall/chaoxing-pagebridge/chaoxing-console.mjs
+# Use npm run service:files to generate definitions with this machine's paths.
+WorkingDirectory=/absolute/path/to/chaoxing-pagebridge-controller
+ExecStart=/absolute/path/to/node /absolute/path/to/chaoxing-pagebridge-controller/dev/console.mjs
 Restart=on-failure
 RestartSec=10
 

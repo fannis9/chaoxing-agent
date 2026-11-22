@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {RunScope} from '../lib/run-scope.mjs';
+const scope=new RunScope();
+const pending=scope.exec(process.execPath,['-e',`process.on('message',m=>{if(m.type==='cancel')process.exit(0)});setInterval(()=>{},1000)`]);
+const rejected=assert.rejects(pending,/取消/);
+setTimeout(()=>scope.cancel(),150);
+await rejected;
+assert.equal(scope.children.size,0);
+assert.throws(()=>scope.exec(process.execPath,['-e','process.exit(0)']),/取消/);
+const stubborn=new RunScope();
+const began=Date.now();
+await assert.rejects(stubborn.exec(process.execPath,['-e',`process.on('SIGTERM',()=>{});setInterval(()=>{},1000)`],{timeout:500}),/超时/);
+assert(Date.now()-began<6000,'timeout must have a bounded forced-exit fallback');
+assert.equal(stubborn.children.size,0);
+await assert.rejects(stubborn.exec(process.execPath,['-e',`process.stdout.write('字'.repeat(100));setInterval(()=>{},1000)`],{maxBuffer:200}),/超限/);
+console.log('PASS: cancellation, bounded timeout fallback and byte-based output limits');

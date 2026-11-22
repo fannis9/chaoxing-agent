@@ -14,7 +14,7 @@ writeFileSync(config, JSON.stringify({schemaVersion:1,cpi:'333',courses:[{course
 const mock = join(dir,'mock-page.mjs');
 writeFileSync(mock, `import {readFileSync,writeFileSync,appendFileSync} from 'node:fs';
 const command=process.argv[2], url=readFileSync(process.env.MOCK_URL,'utf8');
-if(command==='tabs') console.log('[66] 个人空间 https://i.chaoxing.com/base\\n[77] 学习通 '+url);
+if(command==='tabs') console.log(JSON.stringify([{id:66,title:'个人空间',url:'https://i.chaoxing.com/base'},{id:77,title:'学习通',url}]));
 else if(command==='navigate') {
   const target=process.argv[3];
   appendFileSync(process.env.MOCK_NAV,target+'\\n');
@@ -30,7 +30,7 @@ else if(command==='navigate') {
   else if(code.includes('cx-v3-quiz-report')) console.log('');
   else console.log('null');
 }`);
-const child = spawn(process.execPath,[new URL('../chaoxing-auto.mjs',import.meta.url).pathname],
+const child = spawn(process.execPath,[fileURLToPath(new URL('../chaoxing-auto.mjs',import.meta.url))],
   {env:{...process.env,CX_PAGE_BRIDGE:mock,CX_COURSE_CONFIG:config,CX_QUIZ_REPORT_DIR:join(dir,'reports'),
     CX_ANSWER_API_KEY_ENV:'FAKE_KEY',FAKE_KEY:'fake-only',MOCK_URL:urlFile,MOCK_NAV:navigationFile}});
 let output='',errors='';
@@ -54,3 +54,4 @@ try {
   child.kill('SIGTERM');
   await new Promise(resolve => child.on('close',resolve));
 }
+import {fileURLToPath} from 'node:url';

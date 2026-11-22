@@ -4,6 +4,10 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import {bridgePath, browserPath} from './lib/config.mjs';
+import {BridgeClient} from './lib/bridge-client.mjs';
+import {RunScope,bindCancellation} from './lib/run-scope.mjs';
+import {appendRotating} from './lib/maintenance.mjs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -11,10 +15,14 @@ import { createRequire } from 'node:module';
 
 const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PAGE = process.env.CX_PAGE_BRIDGE || join(HERE, '..', 'pagebridge', 'page.mjs');
+const PAGE = bridgePath;
 const OUT = process.env.CX_QUIZ_REPORT_DIR || join(HERE, 'quiz-reports');
+const daemonLog = process.argv.includes('--daemon-log') ? join(OUT, 'controller.log') : null;
+function writeOutput(text) { if(daemonLog)appendRotating(daemonLog,text);else process.stdout.write(text); }
+function writeError(text) { if(daemonLog)appendRotating(daemonLog,text);else process.stderr.write(text); }
 const ONCE = process.argv.includes('--once');
 const START = process.argv.includes('--start');
+let restartRequested = process.argv.includes('--restart-page');
 const RESUME = process.argv.includes('--resume');
 const STATUS = process.argv.includes('--status');
 const SCHEDULE = process.argv.includes('--schedule');
@@ -26,12 +34,15 @@ const seenAnswers = new Set();
 const pending = new Map();
 const monitorErrors = new Set();
 const runtimeErrors = new Set();
+const runtimeFailureCounts = new Map();
 const runtimes = new Map();
+const visibleRequests = new Map();
+const missingSince = new Map();
 const navigationErrors = new Map();
 const require = createRequire(import.meta.url);
 const controller = process.env.CODEX_THREAD_ID || process.env.DSH_SESSION_ID || 'current-terminal';
-const courseConfig = SCHEDULE ? JSON.parse(readFileSync(process.env.CX_COURSE_CONFIG || join(HERE, 'chaoxing-courses.json'), 'utf8')) : null;
-const schedulePath = join(OUT, 'schedule.json');
+let courseConfig = null;
+const schedulePath = process.env.CX_SCHEDULE_PATH || join(OUT, 'schedule.json');
 let scheduleState = null;
 
 function atomicJson(path, value) {
@@ -59,12 +70,20 @@ async function loadSchedule(courseId) {
   }
   if (scheduleState.schemaVersion !== 1 || !Number.isInteger(scheduleState.index)
       || !courseConfig.courses[scheduleState.index]) throw new Error('调度检查点与当前标签不符');
+  if (courseConfig.autoDiscovered && ['switching','auditing','needs-review'].includes(scheduleState.status))scheduleState.status='running';
   if (scheduleState.status !== 'running')
     throw new Error(`调度状态为 ${scheduleState.status}，需检查 schedule.json 后再恢复`);
   const current = courseConfig.courses[scheduleState.index];
   if (current.courseId !== courseId) throw new Error('当前课程与调度检查点不符，需人工检查');
   if (scheduleState.tab !== ownedTab) {
-    if (await tabUrl(scheduleState.tab)) throw new Error('原调度标签仍存在，拒绝切换到另一标签');
+    const previousUrl=await tabUrl(scheduleState.tab);
+    if(previousUrl && /\/mycourse\/studentstudy(?:\?|$)/.test(previousUrl))
+      throw new Error('原调度学习标签仍存在，拒绝同时控制另一学习标签');
+    if(courseConfig.autoDiscovered){
+      const replacement=new URL(await tabUrl(ownedTab));
+      if(replacement.searchParams.get('courseId')!==current.courseId || replacement.searchParams.get('cpi')!==courseConfig.cpi)
+        throw new Error('新标签账号或课程与调度检查点不符');
+    }
     scheduleState.tab = ownedTab;
     saveSchedule();
   }
@@ -73,8 +92,7 @@ async function loadSchedule(courseId) {
 function currentCourse() { return courseConfig?.courses[scheduleState?.index]; }
 
 async function tabUrl(tab) {
-  const listing = await pageCommand('tabs');
-  return listing.split('\n').find(row => row.includes(`[${tab}]`))?.match(/https?:\/\/\S+/)?.[0] || '';
+  return bridge.url(tab);
 }
 
 async function waitForUrl(tab, predicate, timeoutMs = 30000) {
@@ -125,21 +143,23 @@ async function advanceCourse(tab, snapshot) {
   if (!SCHEDULE || scheduleState?.status !== 'running' || snapshot.status !== 'course-boundary') return;
   const course = currentCourse();
   if (snapshot.courseId !== course.courseId || snapshot.chapterId !== course.finalChapterId
-      || !snapshot.completed?.some(item => item.chapterId === course.finalChapterId))
+      || (!snapshot.completed?.some(item => item.chapterId === course.finalChapterId) && !wasDeferred(course.courseId,course.finalChapterId)))
     throw new Error('末章核验记录与调度配置不符');
   scheduleState.status = 'auditing';
   saveSchedule();
   try {
     const directory = await courseDirectory(tab, course);
-    const progress = directory.progress.find(item => item.total === course.expectedTasks);
-    if (!progress || progress.done !== progress.total)
+    const progress = course.expectedTasks===null && directory.progress.length===1 ? directory.progress[0] : directory.progress.find(item => item.total === course.expectedTasks);
+    if ((!progress || progress.done !== progress.total) && !courseConfig.autoDiscovered)
       throw new Error(`课程总进度未确认完成：${JSON.stringify(directory.progress)}，预期 ${course.expectedTasks}`);
-    scheduleState.completed.push({courseId:course.courseId, at:new Date().toISOString(), tasks:progress.total});
+    scheduleState.completed.push({courseId:course.courseId,name:course.name,at:new Date().toISOString(),
+      status:progress && progress.done===progress.total?'complete':'processed-with-unresolved',
+      tasks:progress?.total ?? null,done:progress?.done ?? null});
     scheduleState.index += 1;
     if (scheduleState.index >= courseConfig.courses.length) {
       scheduleState.status = 'complete';
       saveSchedule();
-      process.stdout.write(`${JSON.stringify({event:'schedule-complete', completed:scheduleState.completed.length})}\n`);
+      writeOutput(`${JSON.stringify({event:'schedule-complete', completed:scheduleState.completed.length,summary:scheduleState.completed})}\n`);
       return;
     }
     scheduleState.status = 'switching';
@@ -155,7 +175,7 @@ async function advanceCourse(tab, snapshot) {
     scheduleState.status = 'running';
     saveSchedule();
     await startStudy();
-    process.stdout.write(`${JSON.stringify({event:'course-switched', tab,
+    writeOutput(`${JSON.stringify({event:'course-switched', tab,
       courseId:next.courseId, name:next.name})}\n`);
   } catch (error) {
     scheduleState.status = 'needs-review';
@@ -163,6 +183,12 @@ async function advanceCourse(tab, snapshot) {
     saveSchedule();
     throw error;
   }
+}
+
+function wasDeferred(courseId,chapterId){
+  try{return readFileSync(join(OUT,'skipped-quizzes.jsonl'),'utf8').split('\n').filter(Boolean).some(line=>{
+    const row=JSON.parse(line);return row.status==='deferred' && row.courseId===courseId && row.chapterId===chapterId;
+  });}catch{return false;}
 }
 
 function claimController() {
@@ -201,20 +227,14 @@ function escapeHtml(value) {
 }
 
 async function pageCommand(...args) {
-  const {stdout} = await exec(process.execPath, [PAGE, ...args], {
-    timeout:20000,
-    maxBuffer:4 * 1024 * 1024,
-  });
-  return stdout.trim();
+  return bridge.command(...args);
 }
 
 async function candidateTabs() {
   if (ownedTab) return [ownedTab];
-  const listing = await pageCommand('tabs');
-  return listing.split('\n')
-    .filter(line => /https:\/\/mooc1(?:-[a-z0-9]+)?\.chaoxing\.com\/mycourse\/studentstudy/i.test(line))
-    .map(line => line.match(/\[(\d+)\]/)?.[1])
-    .filter(Boolean);
+  return (await bridge.tabs())
+    .filter(tab => /^https:\/\/mooc1(?:-[a-z0-9]+)?\.chaoxing\.com\/mycourse\/studentstudy/i.test(tab.url))
+    .map(tab=>tab.id);
 }
 
 async function startStudy() {
@@ -227,6 +247,12 @@ async function startStudy() {
     '--world', 'MAIN', '--tab', tab));
   if (!status.validPage) throw new Error('当前标签不是学习通章节页，拒绝注入');
   if (SCHEDULE) await loadSchedule(status.courseId);
+  if(SCHEDULE && courseConfig.autoDiscovered && wasDeferred(status.courseId,currentCourse().finalChapterId)){
+    const url=await tabUrl(tab);
+    if(new URL(url).searchParams.get('chapterId')===currentCourse().finalChapterId){
+      await advanceCourse(tab,{status:'course-boundary',courseId:status.courseId,chapterId:currentCourse().finalChapterId,completed:[]});return;
+    }
+  }
   if (status.report && !status.active) {
     const stale = JSON.parse(await pageCommand('eval',
       '(() => {const node=document.getElementById("cx-v3-quiz-report");try {const report=JSON.parse(node?.textContent||"null");if(report?.chapterId!==new URL(location.href).searchParams.get("chapterId")){node?.remove();return true}} catch {} return false})()',
@@ -234,8 +260,9 @@ async function startStudy() {
     if (stale) status.report = false;
   }
   if (status.oldBox) throw new Error('检测到旧版脚本日志框；请先停止旧脚本并刷新页面');
+  if(restartRequested && !status.active){status.report=false;restartRequested=false;}
   if (status.active || status.report) {
-    process.stdout.write(`${JSON.stringify({event:'attached', tab, status:status.status})}\n`);
+    writeOutput(`${JSON.stringify({event:'attached', tab, status:status.status})}\n`);
     return;
   }
   await pageCommand('eval', 'document.getElementById("cx-v3-logbox")?.remove(); "cleared"',
@@ -247,14 +274,23 @@ async function startStudy() {
     '--world', 'MAIN', '--tab', tab);
   }
   const script = readFileSync(join(HERE, 'chaoxing-autoplay-v3.js'), 'utf8');
-  await pageCommand('eval', script, '--world', 'MAIN', '--tab', tab);
-  process.stdout.write(`${JSON.stringify({event:'started', tab})}\n`);
+  await pageCommand('eval',`window.__cxRecoverySettings=${JSON.stringify(JSON.parse(process.env.CX_RECOVERY_SETTINGS || '{}'))}`,'--world','MAIN','--tab',ownedTab);
+  // Windows caps a process command line at ~32K characters, and the page script
+  // outgrew that. Ship it in chunks, then evaluate the assembled source.
+  await pageCommand('eval', 'window.__cxV3Source=[]; "ready"', '--world', 'MAIN', '--tab', tab);
+  for (let offset = 0; offset < script.length; offset += 6000) {
+    const chunk = script.slice(offset, offset + 6000);
+    await pageCommand('eval', `window.__cxV3Source.push(${JSON.stringify(chunk)}); window.__cxV3Source.length`,
+      '--world', 'MAIN', '--tab', tab);
+  }
+  await pageCommand('eval',
+    '(() => {const source=window.__cxV3Source.join("");window.__cxV3Source=null;(0,eval)(source);return "started"})()',
+    '--world', 'MAIN', '--tab', tab);
+  writeOutput(`${JSON.stringify({event:'started', tab})}\n`);
 }
 
 async function validStudyLocation(tab) {
-  const listing = await pageCommand('tabs');
-  const line = listing.split('\n').find(row => row.includes(`[${tab}]`));
-  const url = line?.match(/https?:\/\/\S+/)?.[0] || '';
+  const url = await bridge.url(tab);
   if (/^https:\/\/mooc1(?:-[a-z0-9]+)?\.chaoxing\.com\/mycourse\/studentstudy(?:\?|$)/i.test(url)) {
     navigationErrors.delete(tab);
     return true;
@@ -267,7 +303,7 @@ async function validStudyLocation(tab) {
       reason:url ? '学习通标签离开章节页，需要人工检查' : '学习通标签已关闭或不可见',
       page:url ? new URL(url).origin + new URL(url).pathname : ''};
     writeFileSync(path, JSON.stringify(incident, null, 2), {mode:0o600});
-    process.stdout.write(`${JSON.stringify({event:'incident', ...incident, path})}\n`);
+    writeOutput(`${JSON.stringify({event:'incident', ...incident, path})}\n`);
   }
   return false;
 }
@@ -308,11 +344,11 @@ async function resumeStudy() {
   const before = await platformQuizStatus(tab);
   if (!before.work?.id) throw new Error('当前页没有可核验的测验任务');
   if (before.v3Active && before.v3Status === 'running') {
-    process.stdout.write(`${JSON.stringify({event:'already-running', tab})}\n`);
+    writeOutput(`${JSON.stringify({event:'already-running', tab})}\n`);
     return;
   }
   if (before.work.complete && before.v3Active && before.v3Status === 'waiting-quiz') {
-    process.stdout.write(`${JSON.stringify({event:'auto-resuming', tab})}\n`);
+    writeOutput(`${JSON.stringify({event:'auto-resuming', tab})}\n`);
     return;
   }
   let checked = before;
@@ -329,7 +365,7 @@ async function resumeStudy() {
   }
   if (checked.work?.id !== before.work.id) throw new Error('刷新后未找到原测验任务，需人工检查');
   await startStudy();
-  process.stdout.write(`${JSON.stringify({event:checked.work.complete ? 'resumed' : 'pending',
+  writeOutput(`${JSON.stringify({event:checked.work.complete ? 'resumed' : 'pending',
     tab, chapterId:checked.chapterId, verified:checked.work.complete})}\n`);
 }
 
@@ -362,7 +398,9 @@ function reportHtml(report) {
 
 async function renderPreview(html, target, report) {
   const {chromium} = require('playwright-core');
-  const browser = await chromium.launch({executablePath:'/usr/bin/google-chrome', headless:true,
+  const executablePath = browserPath();
+  if (!executablePath) throw new Error('未找到浏览器，请设置 CHROME_PATH');
+  const browser = await chromium.launch({executablePath, headless:true,
     args:['--no-sandbox', '--disable-background-networking', '--no-first-run']});
   try {
     const context = await browser.newContext({viewport:{width:1100,height:900}, deviceScaleFactor:1});
@@ -417,8 +455,8 @@ function saveRuntime(tab, snapshot) {
     const event = {at:snapshot.observedAt, tab, runId:snapshot.runId,
       chapterId:snapshot.chapterId, status:snapshot.status, live:snapshot.live,
       completed:snapshot.completed?.length || 0};
-    appendFileSync(join(OUT, 'events.jsonl'), `${JSON.stringify(event)}\n`, {mode:0o600});
-    process.stdout.write(`${JSON.stringify({event:'progress', ...event})}\n`);
+    appendRotating(join(OUT, 'events.jsonl'), `${JSON.stringify(event)}\n`);
+    writeOutput(`${JSON.stringify({event:'progress', ...event})}\n`);
   }
   if (snapshot.live && snapshot.status === 'needs-review' && previous?.status !== 'needs-review') {
     const name = `incident-${Date.now()}-${tab}.json`;
@@ -426,7 +464,7 @@ function saveRuntime(tab, snapshot) {
     writeFileSync(path, JSON.stringify({at:snapshot.observedAt, tab,
       chapterId:snapshot.chapterId, incident:snapshot.incident,
       lastLog:snapshot.lastLog}, null, 2), {mode:0o600});
-    process.stdout.write(`${JSON.stringify({event:'incident', tab,
+    writeOutput(`${JSON.stringify({event:'incident', tab,
       chapterId:snapshot.chapterId, reason:snapshot.incident?.message || '需人工检查', path})}\n`);
   }
   runtimes.set(tab, snapshot);
@@ -437,6 +475,22 @@ async function monitorRuntime(tab) {
   const snapshot = await runtimeSnapshot(tab);
   if (!snapshot) return;
   saveRuntime(tab, snapshot);
+  // The page can navigate away mid-run, which destroys the injected script; the
+  // record then only survives in sessionStorage (live:false). Re-inject once the
+  // absence persists, otherwise a single navigation stalls the queue forever.
+  if (!snapshot.live) {
+    const since = missingSince.get(tab) || Date.now();
+    missingSince.set(tab, since);
+    if (START && !pending.has(tab) && Date.now() - since > 20000) {
+      missingSince.delete(tab);
+      await startStudy();
+      writeOutput(`${JSON.stringify({event:'recovered', tab,
+        chapterId:snapshot.chapterId, reason:'script-lost'})}\n`);
+      return;
+    }
+  } else {
+    missingSince.delete(tab);
+  }
   if (START && SCHEDULE && snapshot.live && snapshot.status === 'course-boundary') {
     await advanceCourse(tab, snapshot);
     return;
@@ -444,7 +498,7 @@ async function monitorRuntime(tab) {
   if (!START || snapshot.live || !previous?.live || previous.status !== 'running'
       || previous.courseId !== snapshot.courseId || pending.has(tab)) return;
   await startStudy();
-  process.stdout.write(`${JSON.stringify({event:'recovered', tab,
+  writeOutput(`${JSON.stringify({event:'recovered', tab,
     chapterId:snapshot.chapterId, reason:'page-reload'})}\n`);
 }
 
@@ -454,27 +508,27 @@ async function monitorPending(tab) {
   const status = await platformQuizStatus(tab);
   if (status.chapterId !== quiz.chapterId) {
     const resumed = status.v3Active && status.v3Status === 'running';
-    process.stdout.write(`${JSON.stringify({event:resumed ? 'resumed' : 'chapter-changed', tab,
+    writeOutput(`${JSON.stringify({event:resumed ? 'resumed' : 'chapter-changed', tab,
       from:quiz.chapterId, to:status.chapterId, verified:resumed})}\n`);
     pending.delete(tab);
     if (START && !status.v3Active && status.chapterId) {
       await pageCommand('eval', 'document.getElementById("cx-v3-quiz-report")?.remove(); true',
         '--world', 'MAIN', '--tab', tab);
       await startStudy();
-      process.stdout.write(`${JSON.stringify({event:'recovered', tab,
+      writeOutput(`${JSON.stringify({event:'recovered', tab,
         chapterId:status.chapterId, reason:'chapter-changed'})}\n`);
     }
     return;
   }
   if (status.v3Active && status.v3Status === 'waiting-quiz') return;
   if (status.v3Active && status.v3Status === 'running') {
-    process.stdout.write(`${JSON.stringify({event:'resumed', tab,
+    writeOutput(`${JSON.stringify({event:'resumed', tab,
       chapterId:quiz.chapterId, verified:true})}\n`);
     pending.delete(tab);
     return;
   }
   if (['stopped', 'needs-review', 'limit'].includes(status.v3Status)) {
-    process.stdout.write(`${JSON.stringify({event:status.v3Status, tab,
+    writeOutput(`${JSON.stringify({event:status.v3Status, tab,
       chapterId:quiz.chapterId})}\n`);
     pending.delete(tab);
     return;
@@ -482,33 +536,44 @@ async function monitorPending(tab) {
   if (status.v3Active || status.v3Status || status.work?.id !== quiz.jobId) return;
   if (!START) {
     if (!quiz.recoveryNotified) {
-      process.stdout.write(`${JSON.stringify({event:'recovery-needed', tab,
+      writeOutput(`${JSON.stringify({event:'recovery-needed', tab,
         chapterId:quiz.chapterId})}\n`);
       quiz.recoveryNotified = true;
     }
     return;
   }
   await startStudy();
-  process.stdout.write(`${JSON.stringify({event:'recovered', tab,
+  writeOutput(`${JSON.stringify({event:'recovered', tab,
     chapterId:quiz.chapterId, verified:status.work.complete})}\n`);
 }
 
 async function check() {
   for (const tab of await candidateTabs()) {
     if (!await validStudyLocation(tab)) continue;
-    try { await monitorRuntime(tab); runtimeErrors.delete(tab); }
+    try { await monitorRuntime(tab); runtimeErrors.delete(tab);runtimeFailureCounts.delete(tab); }
     catch (error) {
+      const failures=(runtimeFailureCounts.get(tab) || 0)+1;runtimeFailureCounts.set(tab,failures);
+      if(failures>=3)throw new Error(`页面状态连续读取失败，需要重新连接：${error.message}`);
       if (!runtimeErrors.has(tab)) {
-        process.stderr.write(`runtime monitor unavailable on tab ${tab}: ${error.message}\n`);
+        writeError(`runtime monitor unavailable on tab ${tab}: ${error.message}\n`);
         runtimeErrors.add(tab);
       }
     }
     try { await monitorPending(tab); monitorErrors.delete(tab); }
     catch (error) {
       if (!monitorErrors.has(tab)) {
-        process.stderr.write(`resume monitor unavailable on tab ${tab}: ${error.message}\n`);
+        writeError(`resume monitor unavailable on tab ${tab}: ${error.message}\n`);
         monitorErrors.add(tab);
       }
+    }
+    // A hidden tab never starts loading video; bring it forward when asked.
+    const wanted = runtimes.get(tab)?.needsVisible;
+    if (wanted && visibleRequests.get(tab) !== wanted) {
+      visibleRequests.set(tab, wanted);
+      try {
+        await pageCommand('activate', tab);
+        writeOutput(`${JSON.stringify({event:'activated', tab, reason:'video-needs-visible'})}\n`);
+      } catch (error) { writeError(`activate failed: ${error.message}\n`); }
     }
     const raw = await pageCommand('eval', 'document.getElementById("cx-v3-quiz-report")?.textContent || ""',
       '--tab', tab);
@@ -526,7 +591,13 @@ async function check() {
     const jsonPath = join(OUT, `${name}.json`);
     const htmlPath = join(OUT, `${name}.html`);
     const pngPath = join(OUT, `${name}.png`);
-    writeFileSync(jsonPath, JSON.stringify(report, null, 2), {mode:0o600});
+    let reportRaw=JSON.stringify(report,null,2);
+    try {
+      const previousRaw=readFileSync(jsonPath,'utf8'),previous=JSON.parse(previousRaw);
+      const withoutTimestamp=value=>JSON.stringify({...value,createdAt:undefined});
+      if(withoutTimestamp(previous)===withoutTimestamp(report)){report=previous;reportRaw=previousRaw;}
+    }catch(error){if(error.code!=='ENOENT' && !(error instanceof SyntaxError))throw error;}
+    writeFileSync(jsonPath, reportRaw, {mode:0o600});
     const html = reportHtml(report);
     writeFileSync(htmlPath, html, {mode:0o600});
     let preview = '';
@@ -538,8 +609,8 @@ async function check() {
       questionPreviews = rendered.manifest;
       previewCount = rendered.count;
     }
-    catch (error) { process.stderr.write(`preview failed: ${error.message}\n`); }
-    process.stdout.write(`${JSON.stringify({event:'quiz', tab, id:report.id,
+    catch (error) { writeError(`preview failed: ${error.message}\n`); }
+    writeOutput(`${JSON.stringify({event:'quiz', tab, id:report.id,
       questionCount:report.questionCount, report:jsonPath, html:htmlPath, preview,
       questionPreviews, previewCount})}\n`);
     return true;
@@ -557,43 +628,53 @@ function reportAnswers() {
         || !['ready', 'needs-review'].includes(answer.status) || !Array.isArray(answer.answers)) continue;
     const report = join(OUT, `quiz-${name.slice(7)}`);
     if (!existsSync(report)) continue;
-    const sourceHash = createHash('sha256').update(readFileSync(report)).digest('hex');
+    const reportRaw = readFileSync(report);
+    // During automation only announce answers for the currently observed quiz.
+    // Archived proposals must not replace the live task in the side panel.
+    if (START) {
+      let reportId;
+      try { reportId = JSON.parse(reportRaw).id; } catch { continue; }
+      if (![...pending.values()].some(quiz => quiz.id === reportId)) continue;
+    }
+    const sourceHash = createHash('sha256').update(reportRaw).digest('hex');
     if (answer.sourceHash !== sourceHash) continue;
     const key = `${path}:${sourceHash}`;
     if (seenAnswers.has(key)) continue;
     seenAnswers.add(key);
-    process.stdout.write(`${JSON.stringify({event:'answer-proposal', answer:path, report,
+    writeOutput(`${JSON.stringify({event:'answer-proposal', answer:path, report,
       model:answer.model || '', status:answer.status, count:answer.answers.length})}\n`);
   }
 }
 
 async function main() {
+  if(SCHEDULE)courseConfig=JSON.parse(readFileSync(process.env.CX_COURSE_CONFIG || join(HERE, 'chaoxing-courses.json'), 'utf8'));
   if (SCHEDULE_STATUS) {
-    try { process.stdout.write(`${readFileSync(schedulePath, 'utf8')}\n`); }
-    catch { process.stdout.write('{"status":"no-schedule"}\n'); }
+    try { writeOutput(`${readFileSync(schedulePath, 'utf8')}\n`); }
+    catch { writeOutput('{"status":"no-schedule"}\n'); }
     return;
   }
   if (STATUS) {
-    try { process.stdout.write(`${readFileSync(join(OUT, 'runtime.json'), 'utf8')}\n`); }
-    catch { process.stdout.write('{"status":"no-checkpoint"}\n'); }
+    try { writeOutput(`${readFileSync(join(OUT, 'runtime.json'), 'utf8')}\n`); }
+    catch { writeOutput('{"status":"no-checkpoint"}\n'); }
     return;
   }
   if (ONCE) { await check(); reportAnswers(); return; }
   if (RESUME) { await resumeStudy(); return; }
   claimController();
-  process.stdout.write(`${JSON.stringify({event:'watching', controller})}\n`);
+  writeOutput(`${JSON.stringify({event:'watching', controller})}\n`);
   if (START) await startStudy();
   let lastWatchError = '';
-  while (true) {
+  while (!scope.aborted) {
     try { await check(); reportAnswers(); lastWatchError = ''; }
     catch (error) {
+      if (scope.aborted) break;
       const message = String(error.message || error).slice(0, 500);
       if (message !== lastWatchError) {
         mkdirSync(OUT, {recursive:true, mode:0o700});
         const path = join(OUT, `incident-${Date.now()}-controller.json`);
         writeFileSync(path, JSON.stringify({at:new Date().toISOString(),
           kind:'controller', reason:message}, null, 2), {mode:0o600});
-        process.stdout.write(`${JSON.stringify({event:'incident', kind:'controller',
+        writeOutput(`${JSON.stringify({event:'incident', kind:'controller',
           reason:message, path})}\n`);
         lastWatchError = message;
       }
@@ -602,4 +683,8 @@ async function main() {
   }
 }
 
-main().catch(error => { process.stderr.write(`${error.stack || error}\n`); process.exitCode = 1; });
+const scope = new RunScope();
+bindCancellation(scope);
+const bridge = new BridgeClient((...args)=>scope.exec(...args));
+main().catch(error => {if(!scope.aborted){writeError(`${error.stack || error}\n`); process.exitCode = 1;}})
+  .finally(async () => {await scope.drain();if(process.connected)process.disconnect();});

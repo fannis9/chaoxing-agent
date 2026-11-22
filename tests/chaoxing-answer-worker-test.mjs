@@ -34,7 +34,7 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 
 async function run(extra = {}, args = []) {
   const child = spawn(process.execPath,
-    [new URL('../chaoxing-answer-worker.mjs', import.meta.url).pathname, '--once', ...args],
+    [fileURLToPath(new URL('../chaoxing-answer-worker.mjs', import.meta.url)), '--once', ...args],
     {env:{...process.env, CX_QUIZ_REPORT_DIR:dir, CX_OPENAI_BASE_URL:`http://127.0.0.1:${server.address().port}/v1`,
       OPENAI_API_KEY:'test-only', ...extra}});
   let out = '', err = '';
@@ -56,7 +56,7 @@ try {
   const saved = JSON.parse(readFileSync(answerPath, 'utf8'));
   assert.equal(saved.status, 'ready');
   assert.deepEqual(saved.answers[0].answerValues, ['B']);
-  assert.equal(statSync(answerPath).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(statSync(answerPath).mode & 0o777, 0o600);
 
   const repeat = await run();
   assert.equal(repeat.code, 0, repeat.err);
@@ -79,10 +79,11 @@ try {
   writeFileSync(reportPath, JSON.stringify(report));
   invalid = true;
   const rejected = await run();
-  assert.notEqual(rejected.code, 0);
-  assert.match(rejected.err, /选项值无效/);
-  assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).sourceHash, saved.sourceHash,
-    'invalid model output must not replace a good answer');
+  assert.equal(rejected.code, 0,rejected.err);
+  const invalidProposal=JSON.parse(readFileSync(answerPath,'utf8'));
+  assert.equal(invalidProposal.status,'needs-review');
+  assert.deepEqual(invalidProposal.answers[0].answerValues,[]);
+  assert.match(invalidProposal.answers[0].explanation,/无法在页面选择/);
   invalid = false;
   missingFigure = true;
   report.questions[0].heading = '根据下图判断曲线1～4';
@@ -91,23 +92,24 @@ try {
   const guessed = await run();
   assert.equal(guessed.code, 0, guessed.err);
   const proposal = JSON.parse(readFileSync(answerPath, 'utf8'));
-  assert.equal(proposal.status, 'ready');
-  assert.equal(proposal.answerPolicyVersion, 4);
-  assert.equal(proposal.answers[0].fallback, 'unresolved-choice-random');
-  assert(['A','B'].includes(proposal.answers[0].answerValues[0]));
+  assert.equal(proposal.status, 'needs-review');
+  assert.equal(proposal.answerPolicyVersion, 6);
+  assert.equal(proposal.answers[0].fallback, '');
+  assert.deepEqual(proposal.answers[0].answerValues, []);
   report.questions[0].heading = '缺少信息，但没有引用图片';
   report.questions[0].text = '无法确定答案';
   writeFileSync(reportPath, JSON.stringify(report));
   const unknown = await run();
   assert.equal(unknown.code, 0, unknown.err);
-  assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).status, 'ready');
+  assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).status, 'needs-review');
   missingFigure = false;
   report.questions[0].captureIssues = ['image-not-embedded'];
   writeFileSync(reportPath, JSON.stringify(report));
   const candidate = await run();
   assert.equal(candidate.code, 0, candidate.err);
   assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).answers[0].fallback,
-    'unresolved-choice-model-value');
+    '');
+  assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).status, 'needs-review');
   report.questions[0].control = {kind:'editor',editors:[{id:'answerEditor123'}]};
   report.questions[0].options = [];
   writeFileSync(reportPath, JSON.stringify(report));
@@ -115,4 +117,12 @@ try {
   assert.equal(nonChoice.code, 0, nonChoice.err);
   assert.equal(JSON.parse(readFileSync(answerPath, 'utf8')).status, 'needs-review');
   console.log(JSON.stringify({worker:'verified', deduplicated:true, modelSelectable:true, invalidRejected:true}));
+  const reviewed=JSON.parse(readFileSync(answerPath,'utf8'));
+  reviewed.humanReviewed=true;reviewed.status='ready';reviewed.answers[0].answerValues=['人工答案'];reviewed.answers[0].needsReview=false;
+  writeFileSync(answerPath,JSON.stringify(reviewed));
+  const beforeReviewCalls=calls;
+  const human=await run({},['--force']);
+  assert.equal(human.code,0,human.err);assert.equal(calls,beforeReviewCalls);
+  assert.equal(JSON.parse(readFileSync(answerPath,'utf8')).answers[0].answerValues[0],'人工答案');
 } finally { await new Promise(resolve => server.close(resolve)); }
+import {fileURLToPath} from 'node:url';

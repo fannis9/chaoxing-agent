@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,writeFileSync,readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {ReviewStore} from '../lib/review-store.mjs';
+import {QuizJournal} from '../lib/quiz-journal.mjs';
+const directory=mkdtempSync(join(tmpdir(),'cx-review-')),key='0123456789abcdef';
+const report={schemaVersion:1,id:'course:chapter:quiz',title:'Test',questions:[{index:1,questionId:'123',type:'单选题',
+  control:{kind:'choice'},options:[{value:'A'},{value:'B'}],captureIssues:['image-not-embedded']}]};
+const path=join(directory,`quiz-${key}.json`);writeFileSync(path,JSON.stringify(report));
+const store=new ReviewStore(directory),pair=store.read(key);
+const request={key,sourceHash:pair.sourceHash,answers:[{index:1,answerValues:['B']}]};
+assert.throws(()=>store.read('../../secret'),/编号/);
+assert.throws(()=>store.save({...request,sourceHash:'stale'}),/更新/);
+assert.throws(()=>store.save(request),/原页面/);
+assert.throws(()=>store.save({...request,acknowledgeMissing:true,answers:[{index:1,answerValues:['X']}]}),/选项/);
+assert.equal(store.save({...request,acknowledgeMissing:true}).status,'ready');
+const answer=JSON.parse(readFileSync(join(directory,`answer-${key}.json`),'utf8'));
+assert.equal(answer.humanReviewed,true);assert.equal(answer.answers[0].reviewedSourceHash,pair.sourceHash);
+new QuizJournal(directory).write(report.id,'submitting');
+assert.throws(()=>store.save({...request,acknowledgeMissing:true}),/可能已提交/);
+console.log('PASS: human review checks report freshness, missing content, choices and submission state');
