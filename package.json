@@ -1,13 +1,24 @@
 {
-  "name": "chaoxing-pagebridge-controller",
-  "version": "0.1.0",
-  "private": false,
+  "name": "chaoxing-agent",
+  "version": "0.4.0",
+  "private": true,
   "type": "module",
-  "engines": {"node": ">=20"},
-  "scripts": {
-    "test": "node tests/chaoxing-v3-smoke.cjs && node tests/chaoxing-quiz-control-test.mjs && node tests/chaoxing-schedule-test.mjs && node tests/chaoxing-answer-worker-test.mjs && node tests/chaoxing-page-filler-test.cjs && node tests/chaoxing-auto-submit-test.cjs && node tests/chaoxing-auto-discovery-test.mjs && node tests/chaoxing-extension-test.cjs"
+  "description": "学习通任务代理：侧栏控制台 + 自有浏览器扩展驱动已登录标签页，不依赖 Page Bridge。",
+  "engines": {
+    "node": ">=22"
   },
-  "devDependencies": {
+  "scripts": {
+    "console": "node dev/console.mjs",
+    "doctor": "node doctor.mjs",
+    "token": "node -e \"process.stdout.write(require('fs').readFileSync('quiz-reports/console-token','utf8').trim()+'\\n')\"",
+    "build:scripts": "node dev/build-scripts.mjs",
+    "test:agent": "node dev/console-agent-test.mjs",
+    "smoke": "node dev/smoke.mjs",
+    "test:rules": "node dev/agent-rules-test.mjs",
+    "test": "node dev/agent-rules-test.mjs && node dev/command-parse-test.mjs && node dev/course-run-test.mjs && node dev/console-agent-test.mjs",
+    "test:parse": "node dev/command-parse-test.mjs"
+  },
+  "dependencies": {
     "playwright-core": "^1.65.1"
   }
 }

@@ -1,15 +1,19 @@
 #!/usr/bin/env node
-// Fill answers in the existing study tab via PageBridge. Never submits the quiz.
+// Fill answers in the existing study tab via 浏览器代理. Never submits the quiz.
 import {execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {readFileSync, renameSync, writeFileSync} from 'node:fs';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
+import {RunScope,bindCancellation} from './lib/run-scope.mjs';
+import {BridgeClient} from './lib/bridge-client.mjs';
 
-const exec = promisify(execFile);
+const scope = new RunScope();
+bindCancellation(scope);
+const exec = (...args) => scope.exec(...args);
+const bridge = new BridgeClient(exec);
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PAGE = process.env.CX_PAGE_BRIDGE || join(HERE, '..', 'pagebridge', 'page.mjs');
 const DIR = resolve(process.env.CX_QUIZ_REPORT_DIR || join(HERE, 'quiz-reports'));
 const CODE = readFileSync(join(HERE, 'chaoxing-fill-page.js'), 'utf8').trim();
 const answerArg = process.argv.find(arg => arg.startsWith('--answer='))?.slice(9);
@@ -23,20 +27,17 @@ function readBounded(path, limit) {
 }
 
 async function command(...args) {
-  const {stdout} = await exec(process.execPath, [PAGE, ...args],
-    {timeout:20000, maxBuffer:4 * 1024 * 1024});
-  return stdout.trim();
+  return bridge.command(...args);
 }
 
 async function targetTab() {
-  const listing = await command('tabs');
+  const tabs = await bridge.tabs();
   if (tabArg) {
-    if (!/^\d+$/.test(tabArg) || !listing.includes(`[${tabArg}]`)) throw new Error('指定标签不存在');
+    if (!/^\d+$/.test(tabArg) || !tabs.some(tab=>tab.id===tabArg)) throw new Error('指定标签不存在');
     return tabArg;
   }
-  const matches = listing.split('\n')
-    .filter(line => /https:\/\/mooc1(?:-[a-z0-9]+)?\.chaoxing\.com\/mycourse\/studentstudy/i.test(line))
-    .map(line => line.match(/\[(\d+)\]/)?.[1]).filter(Boolean);
+  const matches = tabs.filter(tab => /^https:\/\/mooc1(?:-[a-z0-9]+)?\.chaoxing\.com\/mycourse\/studentstudy/i.test(tab.url))
+    .map(tab=>tab.id);
   if (matches.length !== 1) throw new Error(`需要恰好一个学习通章节标签；当前找到 ${matches.length} 个`);
   return matches[0];
 }
@@ -68,7 +69,9 @@ function loadPair(path) {
         || !Array.isArray(item.answerValues) || !item.answerValues.every(v => typeof v === 'string'))
       throw new Error(`答案映射不一致：第 ${item.index} 题`);
     seen.add(item.index);
-    if (item.needsReview !== false || !item.answerValues.length || (q.captureIssues || []).length) {
+    const contentAcknowledged=answer.humanReviewed===true && item.reviewedSourceHash===hash && item.captureAcknowledged===true
+      && (q.captureIssues || []).every(issue=>['image-not-embedded','font-unavailable'].includes(issue));
+    if (item.needsReview !== false || !item.answerValues.length || ((q.captureIssues || []).length && !contentAcknowledged)) {
       skipped.push({index:q.index, reason:'需要复核或答案为空'});
       continue;
     }
@@ -149,4 +152,5 @@ async function main() {
   if (failed.length) process.exitCode = 2;
 }
 
-main().catch(error => { process.stderr.write(`${error.stack || error}\n`); process.exitCode = 1; });
+main().catch(error => { process.stderr.write(`${error.stack || error}\n`); process.exitCode = 1; })
+  .finally(async () => {await scope.drain();if(process.connected)process.disconnect();});

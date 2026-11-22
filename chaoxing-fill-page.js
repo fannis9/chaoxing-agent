@@ -1,4 +1,4 @@
-// Evaluated in PageBridge MAIN world. The final expression is called with a JSON payload.
+// Evaluated in 浏览器代理 MAIN world. The final expression is called with a JSON payload.
 (function fillPage(payload) {
   const fail = reason => ({ok:false, reason});
   if (!/^mooc1(?:-[a-z0-9]+)?\.chaoxing\.com$/i.test(location.hostname)

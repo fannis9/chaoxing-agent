@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "学习通任务控制台",
-  "version": "0.3.3",
-  "description": "在学习通页面显示当前任务状态与日志。",
-  "minimum_chrome_version": "114",
-  "permissions": ["sidePanel", "tabs", "scripting"],
-  "host_permissions": ["https://chaoxing.com/*", "https://*.chaoxing.com/*", "http://127.0.0.1:8788/*"],
-  "background": {"service_worker": "background.js"},
-  "action": {"default_title": "打开学习通控制台"}
+  "version": "0.4.0",
+  "description": "学习通侧栏控制台；同时把已登录标签页交给本机控制台执行命令，不依赖 Page Bridge。",
+  "minimum_chrome_version": "116",
+  "permissions": ["sidePanel", "tabs", "scripting", "storage", "alarms"],
+  "host_permissions": ["https://chaoxing.com/*", "https://*.chaoxing.com/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "panel.html" },
+  "action": { "default_title": "打开学习通控制台" }
 }
