@@ -53,6 +53,7 @@ try {
 } catch { /* no event history yet */ }
 let child = null;
 let stopping = false;
+const LOOP_MODE = (process.env.CX_AGENT_MODE || 'classic') === 'loop';
 let outputBuffer = '';
 let recentLines = [];
 let errorBuffer = '';
@@ -229,6 +230,7 @@ async function halt(mode) {
 // page (antispiderShowVerify 9010). Keep a human-ish gap between relaunches.
 const relaunchCooldown = () => new Promise(resolve => setTimeout(resolve, 12000 + Math.floor(Math.random() * 8000)));
 async function handleIncident(event){
+  if (LOOP_MODE) return; // loop 模式下由 agent 自己恢复，控制台不碰页面
   await halt('needs-review');
   const skipFailure=process.env.CX_SKIP_QUIZ_ERRORS==='1' && event.event==='needs-review';
   const skipVideo=false;
