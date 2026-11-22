@@ -116,8 +116,6 @@ async function main() {
   const maxRate = Number(process.env.CX_MAX_RATE || 2);
   const rateStates = new Map();
   let rateChapter = '';
-  const jumpCounts = new Map();
-  const skipChapters = new Set();
   for (let index = 0; !maxSteps || index < maxSteps; index += 1) {
     let outcome;
     try {
@@ -125,7 +123,6 @@ async function main() {
         platform, bridge, tab, model, dataDir: OUT, history, dryRun,
         processOptional, satisfied: [...optionalDone],
         rate: pickRate(rateStates.get(rateChapter), maxRate),
-        skipChapters: [...skipChapters],
       });
       consecutiveFailures = 0;
     } catch (error) {
@@ -154,21 +151,6 @@ async function main() {
       continue;
     }
     const {scene, decision, result, check} = outcome;
-    if (decision.action === 'next_chapter' && decision.args?.jumpTo) {
-      const target = String(decision.args.jumpTo);
-      const count = (jumpCounts.get(target) || 0) + 1;
-      jumpCounts.set(target, count);
-      if (count >= 2 && !skipChapters.has(target)) {
-        skipChapters.add(target);
-        try {
-          appendRotating(join(OUT, 'agent-deferred.jsonl'), `${JSON.stringify({
-            at: new Date().toISOString(), tab, chapter: target,
-            think: '跳过去两次仍未完成，记为待补做并暂时跳过',
-          })}\n`);
-        } catch { /* 记录失败不影响运行 */ }
-        emit({event: 'chapter-skipped', tab, chapterId: target, reason: '两次回跳仍未完成'});
-      }
-    }
     rateChapter = scene.chapter.id;
     if (decision.action === 'play_video') {
       const desired = Number(decision.args?.rate) || 1;

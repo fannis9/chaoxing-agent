@@ -127,20 +127,6 @@ export function readTasks() {
 
   // 3) 兜底：页面没有 .ans-attach-ct 时用附件列表
   const tasks = jobs.length ? jobs : attachments;
-  // 左侧目录：用于直接跳到第一个未完成章节，避免逐章遍历已完成的。
-  let catalog = [];
-  try {
-    catalog = [...document.querySelectorAll('[id^="cur"]')]
-      .map(element => {
-        const id = String(element.id || '').replace(/^cur/, '');
-        if (!/^\d+$/.test(id)) return null;
-        const name = String(element.querySelector('.posCatalog_name')?.innerText || element.innerText || '')
-          .replace(/\s+/g, ' ').trim().slice(0, 80);
-        return {id, name, completed: Boolean(element.querySelector('.icon_Completed'))};
-      })
-      .filter(Boolean);
-  } catch { catalog = []; }
-
   const nextButton = document.getElementById('prevNextFocusNext');
 
   // 视频弹题：播放中弹出的选择题，不答完不会继续播。
@@ -166,7 +152,6 @@ export function readTasks() {
     defaults,
     containerDepth,
     nextAvailable: Boolean(nextButton && visible(nextButton)),
-    catalog,
     popup,
   };
 }
