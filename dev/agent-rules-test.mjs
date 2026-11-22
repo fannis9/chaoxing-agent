@@ -9,6 +9,7 @@ const check = (label, actual, expected) => {
 };
 
 const scene = (over = {}) => ({
+  url: 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=100',
   pageKind: 'chapter', chapter: {id: '100', name: 'test'}, tasks: [],
   player: null, nextAvailable: true, requiresUser: false, blocked: false,
   allTasksDone: false, defaults: {knowledgeid: 1, courseId: 2, clazzId: 3}, ...over,
@@ -38,7 +39,8 @@ check('视频已暂停 → play_video', decide({
 }), 'play_video');
 check('文档 → play_document', decide({tasks: [{id: '9', type: 'document', state: 'pending', token: 'abc'}]}), 'play_document');
 check('测验 → answer_quiz', decide({tasks: [{id: '7', type: 'workid', state: 'pending'}]}), 'answer_quiz');
-check('未知类型 → play_video', decide({tasks: [{id: '3', type: 'hyperlink', state: 'pending'}]}), 'play_video');
+check('未知类型 → 交给模型（ruleDecide 返回 null）', decide({tasks: [{id: '3', type: 'hyperlink', state: 'pending'}]}), null);
+check('陌生平台 → 交给模型', ruleDecide({...scene(), url: 'https://example.com/course', tasks: [{id: '1', type: 'video', state: 'pending'}]}), null);
 
 const doc = ruleDecide(scene({tasks: [{id: '9', type: 'document', state: 'pending', token: 'abc'}]}));
 check('文档决策带上接口参数', `${doc.args.taskId}/${doc.args.knowledgeid}/${doc.args.courseid}/${doc.args.clazzid}/${doc.args.token}`,

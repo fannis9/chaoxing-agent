@@ -11,6 +11,7 @@ import {readScene} from './lib/probe.mjs';
 import {ensureReport, runQuiz} from './lib/quiz-run.mjs';
 import {appendRotating} from './lib/maintenance.mjs';
 import {advanceSchedule, enterCourse, loadQueue, saveSchedule} from './lib/course-run.mjs';
+import {detectPlatform} from './platforms/registry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.CX_QUIZ_REPORT_DIR || join(HERE, 'quiz-reports');
@@ -53,7 +54,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function resolveTab() {
   if (tabArg) return tabArg;
   const tabs = await bridge.tabs();
-  const study = tabs.find(tab => /studentstudy/.test(tab.url));
+  const study = tabs.find(tab => detectPlatform(tab.url)?.isStudyPage(tab.url));
   if (!study) throw new Error('没有找到学习章节页；可用 --tab=<id> 指定');
   return study.id;
 }
@@ -87,7 +88,7 @@ async function main() {
     } catch { /* 标签可能已关闭 */ }
     await sleep(8000);
   }
-  emit({event: 'started', tab, mode: dryRun ? 'dry-run' : 'act'});
+  emit({event: 'started', tab, mode: dryRun ? 'dry-run' : 'act', platform: detectPlatform(await bridge.url(String(tab)).catch(() => ''))?.id || null});
   let lastChapter = '';
   let chaptersSinceReload = 0;
   const history = [];
@@ -109,7 +110,7 @@ async function main() {
       if (/No tab with id/i.test(reason)) {
         try {
           const rows = await bridge.tabs();
-          const next = rows.find(row => /studentstudy/.test(row.url));
+          const next = rows.find(row => detectPlatform(row.url)?.isStudyPage(row.url));
           if (next) { tab = next.id; delegatedChapter = null; reason = `切换标签 ${next.id}`; }
         } catch { /* 浏览器可能已关闭 */ }
       }
@@ -220,10 +221,12 @@ async function main() {
       saveRuntime(scene);
       emit({event: 'quiz-needed', tab, chapterId: scene.chapter.id, reason: '本章是测验任务'});
       let outcome;
+      const quizAdapter = detectPlatform(scene.url)?.quiz;
       try {
-        const report = await ensureReport({bridge, tab, root: HERE});
+        if (!quizAdapter) throw new Error('当前平台没有答题链路实现');
+        const report = await quizAdapter.ensureReport({bridge, tab, root: HERE});
         emit({event: 'quiz-report', tab, chapterId: scene.chapter.id, questions: report.questions?.length || 0});
-        outcome = await runQuiz({
+        outcome = await quizAdapter.run({
           bridge, tab, root: HERE, dataDir: OUT, report,
           onStep: detail => emit({event: 'quiz-step', tab, chapterId: scene.chapter.id, ...detail}),
         });
