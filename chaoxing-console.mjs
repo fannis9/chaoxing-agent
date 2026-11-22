@@ -9,7 +9,7 @@ import {consoleAuth} from './lib/console-auth.mjs';
 import {createHub} from './lib/agent-hub.mjs';
 import {browserPath} from './lib/config.mjs';
 import {BridgeClient} from './lib/bridge-client.mjs';
-import {inspectCoursePage,inspectAutomationReadiness} from './platforms/chaoxing.mjs';
+import {inspectCoursePage,inspectAutomationReadiness} from './platforms/chaoxing/index.mjs';
 import {validateCourses} from './lib/course-config.mjs';
 import {requestModel,probeModel,validateModel} from './lib/model-client.mjs';
 import {ReviewStore} from './lib/review-store.mjs';

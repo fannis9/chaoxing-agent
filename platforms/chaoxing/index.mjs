@@ -4,6 +4,7 @@
 import {enterCourse} from '../../lib/course-run.mjs';
 import {ensureReport, runQuiz} from '../../lib/quiz-run.mjs';
 import {readTasks, pageKind, chapterId} from './probe.mjs';
+export {inspectCoursePage, inspectAutomationReadiness} from './inspect.mjs';
 
 // 学习通的任务类型来自 window.AttachmentSetting.attachments[].type
 const TASK_ACTIONS = {
