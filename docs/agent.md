@@ -46,6 +46,21 @@ probe（页面内一次性采集）
 | `mark_deferred` | 记待补做并前进 | 章节 id 变化 |
 | `activate_tab` / `reload_page` / `open_course` / `ask_operator` / `wait` | 见名 | 视动作而定 |
 
+## 任务发现（DOM 签名）
+
+任务不是靠附件类型认的，而是遍历 `.ans-attach-ct` 里的任务 iframe，用 DOM 特征判断（照 OCS.js 的做法）：
+
+| 签名 | 选择器 | 动作 |
+|---|---|---|
+| `videojs` | `#video,#audio` | `play_video` |
+| `read` | `#img.imglook` | `play_document` |
+| `hyperlink` | `#hyperlink` | `open_link` |
+| `chapterTest` | `.TiMu` | `answer_quiz` |
+| `pptWithAudio` | `.swiper-container` | 暂未实现（交给模型/停下） |
+| `timereader` | `iframe[name=bookifame][src*=timing]` | 暂未实现 |
+
+再用 iframe `data` 里的 `jobid`/`mid` 回查附件，拿任务点状态（`job === true` 才是任务点）。附件类型只在拿不到签名时兜底。
+
 ## 任务点与拓展资料
 
 学习通的附件里 `job === true` 才是计入进度的任务点；`知识拓展`/资料类 `job` 为空，平台永远不会标记完成。

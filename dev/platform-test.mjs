@@ -26,6 +26,10 @@ check('任务类型 → 动作：video', cx.taskAction('video'), 'play_video');
 check('任务类型 → 动作：document', cx.taskAction('document'), 'play_document');
 check('任务类型 → 动作：workid', cx.taskAction('workid'), 'answer_quiz');
 check('外链任务类型 → open_link', cx.taskAction('hyperlink'), 'open_link');
+check('DOM 签名 videojs → play_video', cx.taskAction('videojs'), 'play_video');
+check('DOM 签名 read → play_document', cx.taskAction('read'), 'play_document');
+check('DOM 签名 chapterTest → answer_quiz', cx.taskAction('chapterTest'), 'answer_quiz');
+check('未实现的签名（pptWithAudio）→ null', cx.taskAction('pptWithAudio') ?? null, null);
 check('未知任务类型 → null', cx.taskAction('live') ?? null, null);
 check('缺少类型 → null', cx.taskAction(undefined) ?? null, null);
 

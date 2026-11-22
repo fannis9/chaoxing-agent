@@ -8,10 +8,15 @@ export {inspectCoursePage, inspectAutomationReadiness} from './inspect.mjs';
 
 // 学习通的任务类型来自 window.AttachmentSetting.attachments[].type
 const TASK_ACTIONS = {
+  // DOM 签名（首选）
+  videojs: 'play_video',
+  read: 'play_document',
+  hyperlink: 'open_link',
+  chapterTest: 'answer_quiz',
+  // 附件类型（兜底）
   video: 'play_video',
   document: 'play_document',
   workid: 'answer_quiz',
-  hyperlink: 'open_link',
 };
 
 export const chaoxing = {
