@@ -35,7 +35,7 @@ check('全部完成但末章 → ask_operator', decide({
 check('视频未开始 → play_video', decide({tasks: [{id: '1', type: 'video', state: 'pending'}]}), 'play_video');
 check('视频正在播 → wait', decide({
   tasks: [{id: '1', type: 'video', state: 'pending'}],
-  player: {currentTime: 42, duration: 300, paused: false},
+  player: {currentTime: 42, duration: 300, paused: false, readyState: 4},
 }), 'wait');
 check('视频已暂停 → play_video', decide({
   tasks: [{id: '1', type: 'video', state: 'pending'}],
@@ -61,6 +61,13 @@ check('开关打开 → 拓展视频参数带 optional 标记',
   ruleDecide(scene({tasks: [optionalVideo]}), {processOptional: true})?.args?.optional, true);
 check('开关关闭 → 只处理任务点',
   ruleDecide(scene({tasks: [optionalVideo, {id: '5', type: 'document', state: 'pending', required: true}]}))?.action, 'play_document');
+
+check('播放器没加载（readyState=0）→ 重新播放',
+  decide({tasks: [{id: '9', type: 'video', state: 'pending', required: true}],
+    player: {paused: false, currentTime: 2841, duration: null, readyState: 0}}), 'play_video');
+check('播放器已加载且在播 → wait',
+  decide({tasks: [{id: '9', type: 'video', state: 'pending', required: true}],
+    player: {paused: false, currentTime: 30, duration: 300, readyState: 4}}), 'wait');
 
 console.log(failed ? `\n${failed} 项失败` : '\n规则测试全部通过');
 process.exit(failed ? 1 : 0);

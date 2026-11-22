@@ -109,6 +109,7 @@ async function main() {
   let delegatedChapter = null;
   const modelCalls = new Map();
   const videoLoops = new Map();
+  const videoProgress = new Map();
   for (let index = 0; !maxSteps || index < maxSteps; index += 1) {
     let outcome;
     try {
@@ -143,6 +144,24 @@ async function main() {
       continue;
     }
     const {scene, decision, result, check} = outcome;
+    if (scene.player) {
+      const state = videoProgress.get(scene.chapter.id) || {last: -1, stalls: 0};
+      if (scene.player.currentTime === state.last && scene.player.currentTime > 0) state.stalls += 1;
+      else state.stalls = 0;
+      state.last = scene.player.currentTime;
+      videoProgress.set(scene.chapter.id, state);
+      if (state.stalls >= 3) {
+        state.stalls = 0;
+        emit({event: 'video-stalled', tab, chapterId: scene.chapter.id, reason: `进度停在 ${scene.player.currentTime}s，重载页面`});
+        try {
+          const rows = await bridge.tabs();
+          const row = rows.find(item => item.id === String(tab));
+          if (row?.url) await bridge.command('navigate', row.url, '--tab', String(tab));
+        } catch { /* 交给下一轮 */ }
+        await sleep(6000);
+        continue;
+      }
+    }
     if (scene.chapter.id !== optionalChapter) { optionalChapter = scene.chapter.id; optionalDone.clear(); }
     if (processOptional && scene.player?.duration && scene.player.currentTime >= scene.player.duration - 2) {
       const waiting = scene.tasks.find(task => task.required === false && task.state !== 'done');
