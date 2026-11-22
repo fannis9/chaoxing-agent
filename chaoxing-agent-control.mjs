@@ -13,6 +13,7 @@ import {appendRotating} from './lib/maintenance.mjs';
 import {advanceSchedule, enterCourse, loadQueue, saveSchedule} from './lib/course-run.mjs';
 import {detectPlatform} from './platforms/registry.mjs';
 import {chapterOutcome} from './lib/chapter-result.mjs';
+import {pickRate, recordRate} from './lib/rate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.CX_QUIZ_REPORT_DIR || join(HERE, 'quiz-reports');
@@ -112,12 +113,16 @@ async function main() {
   const modelCalls = new Map();
   const videoLoops = new Map();
   const videoProgress = new Map();
+  const maxRate = Number(process.env.CX_MAX_RATE || 2);
+  const rateStates = new Map();
+  let rateChapter = '';
   for (let index = 0; !maxSteps || index < maxSteps; index += 1) {
     let outcome;
     try {
       outcome = await step({
         platform, bridge, tab, model, dataDir: OUT, history, dryRun,
         processOptional, satisfied: [...optionalDone],
+        rate: pickRate(rateStates.get(rateChapter), maxRate),
       });
       consecutiveFailures = 0;
     } catch (error) {
@@ -146,6 +151,17 @@ async function main() {
       continue;
     }
     const {scene, decision, result, check} = outcome;
+    rateChapter = scene.chapter.id;
+    if (decision.action === 'play_video') {
+      const desired = Number(decision.args?.rate) || 1;
+      const observed = check?.scene?.player?.rate ?? result?.result?.rateAfter ?? null;
+      const nextRate = recordRate(rateStates.get(scene.chapter.id), observed, desired);
+      if (nextRate.blocked && !rateStates.get(scene.chapter.id)?.blocked) {
+        emit({event: 'rate-locked', chapterId: scene.chapter.id, reason: '平台把倍速重置回 1x，本章改用 1x'});
+      }
+      rateStates.set(scene.chapter.id, nextRate);
+    }
+
     // 这章后来真的完成了 → 把之前的待补做记录撤掉，保持清单准确。
     if (check?.ok && ['next_chapter', 'play_video', 'play_document', 'open_link'].includes(decision.action)) {
       try {

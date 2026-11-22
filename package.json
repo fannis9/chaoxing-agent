@@ -15,12 +15,13 @@
     "test:agent": "node dev/console-agent-test.mjs",
     "smoke": "node dev/smoke.mjs",
     "test:rules": "node dev/agent-rules-test.mjs",
-    "test": "node dev/agent-rules-test.mjs && node dev/command-parse-test.mjs && node dev/course-run-test.mjs && node dev/platform-test.mjs && node dev/popup-test.mjs && node dev/fixtures-test.mjs && node dev/chapter-result-test.mjs && node dev/console-agent-test.mjs",
+    "test": "node dev/agent-rules-test.mjs && node dev/command-parse-test.mjs && node dev/course-run-test.mjs && node dev/platform-test.mjs && node dev/popup-test.mjs && node dev/fixtures-test.mjs && node dev/chapter-result-test.mjs && node dev/rate-test.mjs && node dev/console-agent-test.mjs",
     "test:parse": "node dev/command-parse-test.mjs",
     "test:platform": "node dev/platform-test.mjs",
     "test:popup": "node dev/popup-test.mjs",
     "test:fixtures": "node dev/fixtures-test.mjs",
-    "test:outcome": "node dev/chapter-result-test.mjs"
+    "test:outcome": "node dev/chapter-result-test.mjs",
+    "test:rate": "node dev/rate-test.mjs"
   },
   "dependencies": {
     "playwright-core": "^1.65.1"
