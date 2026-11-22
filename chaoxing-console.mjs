@@ -41,6 +41,7 @@ try { state = {...initial, ...JSON.parse(readFileSync(statePath, 'utf8'))}; } ca
 state.automation=initialAutomation(state.automation,process.env.CX_AUTOMATION==='1');
 state.autoAnswer=state.autoAnswer!==false;
 state.recoverySettings=recoverySettings(state.recoverySettings);
+state.agentOptions={processOptional: state.agentOptions?.processOptional === true};
 if (state.mode === 'running' || state.mode === 'pausing') state.mode = 'stopped';
 try {
   const submitted = new Set(readFileSync(join(dataDir, 'auto-events.jsonl'), 'utf8')
@@ -106,7 +107,8 @@ function launch(tab,resume=false) {
   if(stopping) throw new Error('正在停止，请等待确认');
   if (child) return;
   const env = {...process.env,CX_RECOVERY_SETTINGS:JSON.stringify(state.recoverySettings), CX_AUTO_ANSWER:state.autoAnswer?'1':'0', CX_ANSWER_MODEL:state.model.id,
-    CX_OPENAI_BASE_URL:state.model.baseUrl, CX_ANSWER_API_KEY_ENV:state.model.keyEnv,CX_MODEL_PROTOCOL:state.model.protocol || 'responses', CX_CONSOLE_PORT:String(port), CX_CONSOLE_TOKEN:auth.token};
+    CX_OPENAI_BASE_URL:state.model.baseUrl, CX_ANSWER_API_KEY_ENV:state.model.keyEnv,CX_MODEL_PROTOCOL:state.model.protocol || 'responses', CX_CONSOLE_PORT:String(port), CX_CONSOLE_TOKEN:auth.token,
+    CX_PROCESS_OPTIONAL: state.agentOptions?.processOptional ? '1' : '0'};
   if(state.automation.enabled && existsSync(automaticQueue.configPath)){
     env.CX_COURSE_CONFIG=automaticQueue.configPath;env.CX_SCHEDULE_PATH=automaticSchedule;
   }
@@ -459,6 +461,11 @@ const server = createServer(async (request,response) => {
         if(!target || !/^https:\/\/(?:i|mooc1(?:-[a-z0-9]+)?|mooc2-ans)\.chaoxing\.com\//.test(target.url))
           throw new Error('绑定标签不存在或已离开学习通，请重新选择');
         launch(tab,input.action==='resume');
+      }
+      else if (input.action === 'options') {
+        state.agentOptions = {processOptional: input.processOptional === true};
+        save();
+        json(response, 200, {agentOptions: state.agentOptions, needsRestart: Boolean(child)}); return;
       }
       else if (input.action === 'pause') {await autopilot.setIntent(state.automation.enabled,true);await halt('paused');}
       else if (input.action === 'stop') {await autopilot.setIntent(state.automation.enabled,true);await halt('stopped');}

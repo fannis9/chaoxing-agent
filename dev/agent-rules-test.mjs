@@ -15,6 +15,7 @@ const scene = (over = {}) => ({
   allTasksDone: false, defaults: {knowledgeid: 1, courseId: 2, clazzId: 3}, ...over,
 });
 const decide = (over) => ruleDecide(scene(over))?.action ?? null;
+const decideWith = (over, options) => ruleDecide(scene(over), options)?.action ?? null;
 
 check('验证码/登录 → ask_operator', decide({requiresUser: true}), 'ask_operator');
 check('反爬页 → ask_operator', decide({pageKind: 'verify'}), 'ask_operator');
@@ -50,6 +51,16 @@ check('文档决策带上接口参数', `${doc.args.taskId}/${doc.args.knowledge
   '9/1/2/3/abc');
 
 check('视频弹题 → answer_popup', ruleDecide({...scene(), popup: {present: true, text: '下列哪个是电子？', options: ['质子', '电子']}})?.action, 'answer_popup');
+
+const optionalVideo = {id: '', type: 'video', state: 'pending', required: false, index: 0};
+check('默认不处理拓展资料 → 直接下一章', decide({tasks: [optionalVideo], allTasksDone: false}), 'next_chapter');
+check('开关打开 → 播放拓展视频', decideWith({tasks: [optionalVideo]}, {processOptional: true}), 'play_video');
+check('开关打开但已处理过 → 直接下一章',
+  decideWith({tasks: [optionalVideo]}, {processOptional: true, satisfied: ['0:']}), 'next_chapter');
+check('开关打开 → 拓展视频参数带 optional 标记',
+  ruleDecide(scene({tasks: [optionalVideo]}), {processOptional: true})?.args?.optional, true);
+check('开关关闭 → 只处理任务点',
+  ruleDecide(scene({tasks: [optionalVideo, {id: '5', type: 'document', state: 'pending', required: true}]}))?.action, 'play_document');
 
 console.log(failed ? `\n${failed} 项失败` : '\n规则测试全部通过');
 process.exit(failed ? 1 : 0);

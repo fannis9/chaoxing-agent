@@ -11,6 +11,8 @@
   <section><h2>全自动模式</h2><p id="automationStatus">等待控制台</p>
     <button id="toggleAutomation">自动刷课：关闭</button>
     <button id="toggleAnswer">自动答题：开启</button>
+    <label class="check-line"><input id="processOptional" type="checkbox">也处理拓展资料（平台不计进度的视频/文档）</label>
+    <p>默认跳过拓展资料；打开后会播放/阅读它们，但平台不会把这类内容记为完成。切换后需要重启队列生效。</p>
     <p>关闭自动答题后，遇到测验等待你手动作答；不会自动填写或提交。关闭自动刷课停止课程队列，答题开关的选择会保留。</p>
     <p>自动发现未结束课程。手动暂停后会保持暂停，点击继续恢复。</p>
     <details><summary>课程与待补做汇总</summary><div id="automationSummary"></div></details>

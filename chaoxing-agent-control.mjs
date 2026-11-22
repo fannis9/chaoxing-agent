@@ -100,6 +100,9 @@ async function main() {
   emit({event: 'started', tab, mode: dryRun ? 'dry-run' : 'act', platform: platform.id});
   let lastChapter = '';
   let chaptersSinceReload = 0;
+  const processOptional = process.env.CX_PROCESS_OPTIONAL === '1';
+  const optionalDone = new Set();
+  let optionalChapter = '';
   const history = [];
 
   let consecutiveFailures = 0;
@@ -110,8 +113,8 @@ async function main() {
     let outcome;
     try {
       outcome = await step({
-        platform,
-      bridge, tab, model, dataDir: OUT, history, dryRun,
+        platform, bridge, tab, model, dataDir: OUT, history, dryRun,
+        processOptional, satisfied: [...optionalDone],
       });
       consecutiveFailures = 0;
     } catch (error) {
@@ -140,6 +143,11 @@ async function main() {
       continue;
     }
     const {scene, decision, result, check} = outcome;
+    if (scene.chapter.id !== optionalChapter) { optionalChapter = scene.chapter.id; optionalDone.clear(); }
+    if (processOptional && scene.player?.duration && scene.player.currentTime >= scene.player.duration - 2) {
+      const waiting = scene.tasks.find(task => task.required === false && task.state !== 'done');
+      if (waiting) optionalDone.add(`${waiting.index ?? ''}:${waiting.id || ''}`);
+    }
     if (scene.chapter.id && scene.chapter.id !== lastChapter) {
       if (lastChapter) chaptersSinceReload += 1;
       lastChapter = scene.chapter.id;
@@ -267,6 +275,9 @@ async function main() {
     emit({event: 'progress', tab, chapterId: scene.chapter.id, status: 'running', live: true,
       completed: 0, agent: true});
 
+    if (processOptional && decision.action === 'play_document' && decision.args?.optional && decision.args?.taskKey) {
+      optionalDone.add(decision.args.taskKey);
+    }
     history.push({chapterId: scene.chapter.id, action: decision.action, think: decision.think});
     try {
       appendRotating(join(OUT, 'agent-events.jsonl'), `${JSON.stringify({

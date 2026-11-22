@@ -70,6 +70,7 @@ function renderConsole(state) {
   $('toggleAnswer').textContent=state.autoAnswer!==false?'自动答题：开启':'自动答题：关闭';
   $('toggleAutomation').setAttribute('aria-pressed',String(Boolean(automation.enabled)));
   $('toggleAnswer').setAttribute('aria-pressed',String(state.autoAnswer!==false));
+  $('processOptional').checked = state.agentOptions?.processOptional === true;
   const courseNames={pending:'待处理',complete:'已完成','processed-with-unresolved':'已处理，仍有未完成任务','no-tasks':'无章节任务',unavailable:'目录暂不可用'};
   $('automationSummary').textContent=(automation.courses || []).map(c=>`${c.name}：${courseNames[c.status] || c.status}`).join('\n')+`\n待补做章节：${automation.deferred?.length || 0}`;
   $('automationSummary').style && ($('automationSummary').style.whiteSpace='pre-wrap');
@@ -273,6 +274,13 @@ $('toggleAnswer').addEventListener('click',async()=>{
   try{await control('/auto-answer',{enabled:consoleState?.autoAnswer===false});await refreshConsole();}
   catch(error){$('message').textContent=error.message;}
   finally{$('toggleAnswer').disabled=false;}
+});
+$('processOptional').addEventListener('change',async()=>{
+  try {
+    const result = await control('/control',{action:'options',processOptional:$('processOptional').checked});
+    renderConsole({...consoleState,...result});
+    $('message').textContent = result.needsRestart ? '已保存；重启队列后生效' : '已保存';
+  } catch (error) { $('message').textContent = String(error.message || error); }
 });
 $('toggleAutomation').addEventListener('click',async()=>{
   try{await control('/automation',{enabled:!consoleState?.automation?.enabled});await refreshConsole();}
