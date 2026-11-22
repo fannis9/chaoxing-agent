@@ -12,6 +12,7 @@ import {ensureReport, runQuiz} from './lib/quiz-run.mjs';
 import {appendRotating} from './lib/maintenance.mjs';
 import {advanceSchedule, enterCourse, loadQueue, saveSchedule} from './lib/course-run.mjs';
 import {detectPlatform} from './platforms/registry.mjs';
+import {chapterOutcome} from './lib/chapter-result.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.CX_QUIZ_REPORT_DIR || join(HERE, 'quiz-reports');
@@ -145,6 +146,13 @@ async function main() {
       continue;
     }
     const {scene, decision, result, check} = outcome;
+    const chapterResult = chapterOutcome({decision, result, check, scene, before: scene});
+    try {
+      appendRotating(join(OUT, 'agent-outcomes.jsonl'), `${JSON.stringify({
+        at: new Date().toISOString(), chapterId: scene.chapter.id, action: decision.action,
+        outcome: chapterResult, verified: check ? check.ok : null,
+      })}\n`);
+    } catch { /* 统计失败不影响运行 */ }
     if (scene.player) {
       const state = videoProgress.get(scene.chapter.id) || {last: -1, stalls: 0};
       if (scene.player.currentTime === state.last && scene.player.currentTime > 0) state.stalls += 1;
