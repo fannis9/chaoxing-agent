@@ -63,6 +63,7 @@ async function main() {
   let tab = await resolveTab();
   // 学习页若能独占一个窗口，平台就不会因为标签切换而暂停播放。
   try {
+    if (process.env.CX_AGENT_OWN_WINDOW !== '1') throw new Error('未启用独立窗口');
     const rows = await bridge.tabs();
     const mine = rows.find(row => row.id === String(tab));
     const sharing = mine?.windowId !== undefined
