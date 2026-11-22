@@ -58,7 +58,7 @@ chaoxing-console.mjs（8788）
 
 ## 与 Page Bridge 版的关系
 
-老仓库 `chaoxing-pagebridge-controller` 保留作参考/回退。差别：
+本仓库由 Page Bridge 版重写而来：旧实现保存在 git 分支 `legacy/pagebridge-wip`（以及 `E:\dsh\backups` 里的 zip 存档），需要对照或回退时看那里。差别：
 
 | | Page Bridge 版 | 本仓库 |
 |---|---|---|
