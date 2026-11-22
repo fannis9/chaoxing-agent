@@ -78,5 +78,9 @@ check('后面都完成了 → 点下一节',
   ruleDecide({...scene({tasks: [{id: '1', type: 'video', state: 'done', required: true}], allTasksDone: true}),
     catalog: [{id: '100', completed: true}, {id: '200', completed: true}]})?.action, 'next_chapter');
 
+check('已完成但任务没加载出来 → 直接跳到下一个未完成',
+  ruleDecide({...scene({tasks: [], emptyContent: false}),
+    catalog: [{id: '100', completed: true}, {id: '200', completed: false}]})?.args?.jumpTo, '200');
+
 console.log(failed ? `\n${failed} 项失败` : '\n规则测试全部通过');
 process.exit(failed ? 1 : 0);
