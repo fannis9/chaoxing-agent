@@ -682,6 +682,11 @@ try {
       setStatus('limit');
       return false;
     }
+    if (window.__cxV3NoAutoNext === true) {
+      log('已禁用自动切节，交回控制端决定');
+      setStatus('waiting-agent');
+      return false;
+    }
     log('准备进入下一节');
     const before = chapterFingerprint();
     // Deliberate pause between chapters, jittered: back-to-back chapter flips are

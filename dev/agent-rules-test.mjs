@@ -71,5 +71,12 @@ check('播放器已加载且在播 → wait',
 
 check('外链任务点 → open_link', decide({tasks: [{id: '8', type: 'hyperlink', state: 'pending', required: true}]}), 'open_link');
 
+check('目录里下一个未完成 → 直接跳过去',
+  ruleDecide({...scene({tasks: [{id: '1', type: 'video', state: 'done', required: true}], allTasksDone: true}),
+    catalog: [{id: '100', completed: true}, {id: '200', completed: true}, {id: '300', completed: false}]})?.args?.jumpTo, '300');
+check('后面都完成了 → 点下一节',
+  ruleDecide({...scene({tasks: [{id: '1', type: 'video', state: 'done', required: true}], allTasksDone: true}),
+    catalog: [{id: '100', completed: true}, {id: '200', completed: true}]})?.action, 'next_chapter');
+
 console.log(failed ? `\n${failed} 项失败` : '\n规则测试全部通过');
 process.exit(failed ? 1 : 0);
