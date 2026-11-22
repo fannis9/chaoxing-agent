@@ -51,6 +51,7 @@ chaoxing-console.mjs（8788）
 | `chaoxing-quiz-control.mjs` | 章节控制器：注入页面脚本、提交、恢复 |
 | `chaoxing-autoplay-v3.js` | 页面脚本（视频/文档/测验），由 `dev/build-scripts.mjs` 生成单章版 |
 | `chaoxing-page-filler.mjs` / `chaoxing-answer-worker.mjs` | 填答卷 / 调模型答题 |
+| `platforms/<id>/index.mjs` | 平台适配器（任务类型、入口、答题）；见 [docs/platform-adapter.md](docs/platform-adapter.md) |
 | `lib/bridge-client.mjs` | 浏览器命令客户端（HTTP → 控制台 → 扩展） |
 | `lib/agent-hub.mjs` | 控制台内的 WebSocket hub |
 | `extension/` | 侧栏面板 + 浏览器代理（一个扩展两件事） |
