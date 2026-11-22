@@ -54,6 +54,7 @@ try {
 let child = null;
 let stopping = false;
 let outputBuffer = '';
+let recentLines = [];
 let errorBuffer = '';
 let controlRevision=0;
 let incidentBusy=false;
@@ -127,6 +128,8 @@ function launch(tab,resume=false) {
     const lines = outputBuffer.split('\n');
     outputBuffer = lines.pop();
     for (const line of lines) {
+      recentLines.push(line);
+      if (recentLines.length > 60) recentLines = recentLines.slice(-60);
       try {
         const event = JSON.parse(line);
         state.event = event;
@@ -165,6 +168,19 @@ function launch(tab,resume=false) {
   });
   child.on('exit', code => {
     child = null;
+        try {
+          let chapterId = '';
+          try {
+            chapterId = JSON.parse(readFileSync(join(dataDir, 'runtime.json'), 'utf8')).chapterId || '';
+          } catch { /* 还没有 runtime */ }
+          appendRotating(join(dataDir, 'controller-exit.jsonl'), `${JSON.stringify({
+            at: new Date().toISOString(), code, tab: state.targetTab || '', chapterId,
+            restart: Boolean(resume), mode: state.mode,
+            error: String(errorBuffer || '').slice(-600),
+            tail: recentLines.slice(-25),
+          })}\n`);
+        } catch { /* 记录失败不影响主流程 */ }
+        recentLines = [];
     if (!stopping) {
       state.mode = 'stopped';
       state.error = `${errorBuffer || '控制进程退出'}（代码 ${code}）`.slice(-2000);
