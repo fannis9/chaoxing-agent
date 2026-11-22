@@ -21,7 +21,10 @@ check('反爬页 → ask_operator', decide({pageKind: 'verify'}), 'ask_operator'
 check('空间首页 → open_course', decide({pageKind: 'space'}), 'open_course');
 check('课程目录 → open_course', decide({pageKind: 'catalog'}), 'open_course');
 check('未知页面 → ask_operator', decide({pageKind: 'unknown'}), 'ask_operator');
-check('没有任务 → mark_deferred', decide({tasks: []}), 'mark_deferred');
+check('没有任务且平台显示暂无内容 → mark_deferred', decide({tasks: [], emptyContent: true}), 'mark_deferred');
+check('没有任务但可能没加载完 → 先 wait', decide({tasks: [], emptyContent: false}), 'wait');
+check('只有非任务点内容 → 直接下一章', decide({tasks: [{id: '', type: 'video', state: 'pending', required: false}]}), 'next_chapter');
+check('非任务点不触发播放', decide({tasks: [{id: '', type: 'video', state: 'pending', required: false}, {id: '7', type: 'video', state: 'done', required: true}], allTasksDone: true}), 'next_chapter');
 check('全部完成且有下一节 → next_chapter', decide({
   tasks: [{id: '1', type: 'video', state: 'done'}], allTasksDone: true,
 }), 'next_chapter');

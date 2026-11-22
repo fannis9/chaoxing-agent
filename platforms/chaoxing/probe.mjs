@@ -29,7 +29,7 @@ export function readTasks() {
     containerDepth = selected.depth;
     try { defaults = {...(selected.setting.defaults || {})}; } catch { defaults = null; }
     tasks = selected.setting.attachments.map((item, index) => {
-      const id = String(item?.jobid || '');
+      const id = String(item?.jobid || item?.property?._jobid || '');
       let domFinished = false;
       try {
         const node = [...selected.view.document.querySelectorAll('[jobid]')]
@@ -37,8 +37,10 @@ export function readTasks() {
         domFinished = Boolean(node?.closest('.ans-attach-ct')?.classList.contains('ans-job-finished'));
       } catch { /* 页面重绘 */ }
       const done = domFinished || item?.isPassed === true;
+      // job === true 才是平台计入进度的“任务点”；知识拓展/资料类 job 为空，永远不会有完成标记。
+      const required = item?.job === true;
       return {
-        index, id, type: String(item?.type || ''), job: Boolean(item?.job),
+        index, id, type: String(item?.type || ''), job: Boolean(item?.job), required,
         passed: item?.isPassed, domFinished, token: String(item?.jtoken || ''),
         state: done ? 'done' : 'pending',
       };
