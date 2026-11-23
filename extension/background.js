@@ -122,6 +122,12 @@ const handlers = {
     return {ok: true, tabId: String(tab.id)};
   },
   activate: async ({tab}) => { await chrome.tabs.update(Number(tab), {active: true}); return {ok: true}; },
+  // 把窗口从最小化恢复并聚焦：标签隐藏时平台会暂停播放。
+  focus_window: async ({tab}) => {
+    const target = await chrome.tabs.get(Number(tab));
+    await chrome.windows.update(target.windowId, {focused: true, state: 'normal'});
+    return {ok: true, windowId: target.windowId};
+  },
   // 把标签挪进独立窗口：窗口不最小化时标签始终是选中态，平台就不会因为“标签隐藏”暂停。
   open_window: async ({tab, url}) => {
     const options = {focused: false, state: 'normal'};
