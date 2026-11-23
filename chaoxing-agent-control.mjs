@@ -244,7 +244,7 @@ async function main() {
       if (unfinished && (state.ends >= 3 || state.rewinds >= 3)) {
         emit({event: 'video-loop-detected', tab, chapterId: scene.chapter.id,
           reason: `视频已播放 ${state.ends} 遍/回退 ${state.rewinds} 次，平台仍未标记完成`});
-        await act({bridge, tab, dataDir: OUT, decision: {action: 'mark_deferred',
+        await act({bridge, tab, dataDir: OUT, platform, decision: {action: 'mark_deferred',
           args: {chapter: scene.chapter.id},
           think: '视频重播但平台不记完成，记为待补做'}});
         videoLoops.delete(scene.chapter.id);
@@ -365,7 +365,7 @@ async function main() {
         emit({event: 'needs-review', tab, chapterId: scene.chapter.id,
           reason: `连续 ${count} 次未验证通过，记为待补做并前进`});
         try {
-          await act({bridge, tab, dataDir: OUT, decision: {action: 'mark_deferred',
+          await act({bridge, tab, dataDir: OUT, platform, decision: {action: 'mark_deferred',
             args: {chapter: scene.chapter.id}, think: '多次未验证通过，记为待补做'}});
         } catch { /* 记不上也要继续 */ }
         verifyFailures.delete(key);

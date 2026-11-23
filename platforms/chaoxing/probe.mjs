@@ -180,3 +180,13 @@ export function chapterId(url) {
     return '';
   }
 }
+
+/** 页面内：这个 iframe 所属的任务卡是否已完成（供通用探针调用）。 */
+export function isFinishedFrame(frame) {
+  try {
+    const card = frame && frame.closest ? frame.closest('.ans-attach-ct') : null;
+    return Boolean(card && card.classList.contains('ans-job-finished'));
+  } catch {
+    return false;
+  }
+}

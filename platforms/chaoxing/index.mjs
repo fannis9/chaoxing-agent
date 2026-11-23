@@ -3,7 +3,7 @@
 // 都收敛在这里；lib/agent-loop 只保留与平台无关的循环。
 import {enterCourse} from '../../lib/course-run.mjs';
 import {ensureReport, runQuiz} from '../../lib/quiz-run.mjs';
-import {readTasks, pageKind, chapterId} from './probe.mjs';
+import {readTasks, pageKind, chapterId, isFinishedFrame} from './probe.mjs';
 export {inspectCoursePage, inspectAutomationReadiness} from './inspect.mjs';
 
 // 学习通的任务类型来自 window.AttachmentSetting.attachments[].type
@@ -40,6 +40,7 @@ export const chaoxing = {
 
   /** 页面内任务读取器（会被序列化进页面执行）。 */
   readTasks,
+  isFinishedFrame,
   /** 页面类型：chapter / catalog / space / verify / unknown。 */
   pageKind,
   /** 章节 id。 */
