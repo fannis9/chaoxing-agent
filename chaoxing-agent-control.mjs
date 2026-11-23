@@ -113,6 +113,7 @@ async function main() {
   const modelCalls = new Map();
   const videoLoops = new Map();
   const videoProgress = new Map();
+  const verifyFailures = new Map();
   const maxRate = Number(process.env.CX_MAX_RATE || 2);
   const rateStates = new Map();
   let rateChapter = '';
@@ -355,9 +356,24 @@ async function main() {
       continue;
     }
     if (check && !check.ok && decision.action !== 'wait') {
+      const key = `${scene.chapter.id}:${decision.action}`;
+      const count = (verifyFailures.get(key) || 0) + 1;
+      verifyFailures.set(key, count);
       emit({event: 'incident', tab, chapterId: scene.chapter.id,
-        reason: `动作未验证通过：${decision.action}`});
-      return;
+        reason: `动作未验证通过：${decision.action}（第 ${count} 次）`});
+      if (count >= 3) {
+        emit({event: 'needs-review', tab, chapterId: scene.chapter.id,
+          reason: `连续 ${count} 次未验证通过，记为待补做并前进`});
+        try {
+          await act({bridge, tab, dataDir: OUT, decision: {action: 'mark_deferred',
+            args: {chapter: scene.chapter.id}, think: '多次未验证通过，记为待补做'}});
+        } catch { /* 记不上也要继续 */ }
+        verifyFailures.delete(key);
+        await sleep(5000);
+      } else {
+        await sleep(3000);
+      }
+      continue;
     }
     if (decision.action === 'wait') await sleep(Math.max(paceMs, 6000));
     else await sleep(paceMs + Math.floor(Math.random() * 2000));
