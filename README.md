@@ -56,6 +56,26 @@ chaoxing-console.mjs（8788）
    npm run smoke        # 真实浏览器：tabs/open/eval/activate/close
    ```
 
+## 目录结构
+
+```
+chaoxing-console.mjs            控制台（HTTP + hub，常驻）
+chaoxing-agent-control.mjs      agent 循环（每章观察/决策/执行/验证）
+doctor.mjs                      自检
+scripts 内联在根目录的页面脚本：
+  chaoxing-answer-worker.mjs      答题 worker（调模型）
+  chaoxing-page-filler.mjs        填卷
+  chaoxing-autoplay-v3-one-chapter.js  单章页面脚本（文档/视频兜底）
+  chaoxing-fill-page.js / chaoxing-submit-page.js  交卷相关
+lib/                            通用逻辑（规则、探针骨架、模型、倍速、结果）
+platforms/                      平台适配器（chaoxing / zhihuishu 只读）
+extension/                      浏览器扩展（侧栏 + 页面命令通道）
+dev/                            开发脚本与测试
+docs/                           设计文档
+legacy/                         经典管线与已弃用脚本（CX_AGENT_MODE=classic 时仍可用）
+quiz-reports/                   运行期数据（不入库）；archive/ 存旧日志与备份
+```
+
 ## 目录
 
 | 路径 | 作用 |

@@ -272,7 +272,7 @@ async function startStudy() {
       courseId:course.courseId, finalChapterId:course.finalChapterId})}; "configured"`,
     '--world', 'MAIN', '--tab', tab);
   }
-  const script = readFileSync(join(HERE, 'chaoxing-autoplay-v3.js'), 'utf8');
+  const script = readFileSync(join(HERE, 'legacy', 'chaoxing-autoplay-v3.js'), 'utf8');
   await pageCommand('eval',`window.__cxRecoverySettings=${JSON.stringify(JSON.parse(process.env.CX_RECOVERY_SETTINGS || '{}'))}`,'--world','MAIN','--tab',ownedTab);
   // Windows caps a process command line at ~32K characters, and the page script
   // outgrew that. Ship it in chunks, then evaluate the assembled source.
