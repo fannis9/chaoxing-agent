@@ -226,8 +226,14 @@ async function main() {
     if (decision.by === 'model') {
       modelCalls.set(scene.chapter.id, (modelCalls.get(scene.chapter.id) || 0) + 1);
       if ((modelCalls.get(scene.chapter.id) || 0) > 5) {
-        emit({event: 'needs-review', tab, chapterId: scene.chapter.id, reason: '本章模型决策已超过 5 次，停下来避免空转'});
-        return;
+        emit({event: 'needs-review', tab, chapterId: scene.chapter.id, reason: '本章模型决策已超过 5 次，记为待补做并前进'});
+        try {
+          await act({bridge, tab, dataDir: OUT, platform, decision: {action: 'mark_deferred',
+            args: {chapter: scene.chapter.id}, think: '模型决策超限，记为待补做'}});
+        } catch { /* 记不上也要继续 */ }
+        modelCalls.delete(scene.chapter.id);
+        await sleep(5000);
+        continue;
       }
     }
     if (scene.chapter.id !== delegatedChapter) delegatedChapter = null;
@@ -346,6 +352,19 @@ async function main() {
     saveRuntime(scene);
 
     if (decision.action === 'ask_operator') {
+      const blocked = scene.requiresUser || scene.pageKind === 'verify';
+      const unknownTasks = scene.tasks.length > 0
+        && scene.tasks.every(task => !task.type && !task.id && !task.mid);
+      if (!blocked && (unknownTasks || !scene.tasks.length)) {
+        emit({event: 'needs-review', tab, chapterId: scene.chapter.id,
+          reason: '任务类型无法识别，记为待补做并前进'});
+        try {
+          await act({bridge, tab, dataDir: OUT, platform, decision: {action: 'mark_deferred',
+            args: {chapter: scene.chapter.id}, think: '任务类型无法识别，记为待补做'}});
+        } catch { /* 记不上也要继续 */ }
+        await sleep(5000);
+        continue;
+      }
       emit({event: 'needs-review', tab, chapterId: scene.chapter.id,
         reason: decision.think || '需要人工处理'});
       return;
