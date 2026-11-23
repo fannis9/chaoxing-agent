@@ -11,6 +11,7 @@ import {readScene} from './lib/probe.mjs';
 import {ensureReport, runQuiz} from './lib/quiz-run.mjs';
 import {appendRotating} from './lib/maintenance.mjs';
 import {advanceSchedule, enterCourse, loadQueue, saveSchedule} from './lib/course-run.mjs';
+import {advanceCourse} from './lib/course-boundary.mjs';
 import {detectPlatform} from './platforms/registry.mjs';
 import {chapterOutcome} from './lib/chapter-result.mjs';
 import {pickRate, recordRate} from './lib/rate.mjs';
@@ -278,20 +279,15 @@ async function main() {
       if (expected && expected !== String(scene.chapter.id)) {
         log.push(`${new Date().toLocaleTimeString()} 末章与配置不符：配置 ${expected}，当前 ${scene.chapter.id}`);
       }
-      const next = advanceSchedule(queue.schedule, course, {progress: scene.progress});
-      saveSchedule(queue.schedulePath, next);
+      const result = await advanceCourse({bridge, tab, queue, course, scene});
       emit({event: 'course-complete', tab, courseId: course.courseId, name: course.name,
-        status: next.completed.at(-1).status, done: next.completed.at(-1).done, total: next.completed.at(-1).tasks});
+        status: result.lastEntry.status, done: result.lastEntry.done, total: result.lastEntry.tasks});
       log.push(`${new Date().toLocaleTimeString()} 课程完成：${course.name}`);
-      if (next.index >= queue.config.courses.length) {
-        next.status = 'complete';
-        saveSchedule(queue.schedulePath, next);
-        emit({event: 'schedule-complete', tab, completed: next.completed.length, summary: next.completed});
+      if (result.kind === 'schedule-complete') {
+        emit({event: 'schedule-complete', tab, completed: result.next.completed.length, summary: result.next.completed});
         return;
       }
-      const upcoming = queue.config.courses[next.index];
-      emit({event: 'course-switch', tab, courseId: upcoming.courseId, name: upcoming.name});
-      await enterCourse({bridge, tab, course: upcoming, cpi: queue.config.cpi});
+      emit({event: 'course-switch', tab, courseId: result.upcoming.courseId, name: result.upcoming.name});
       await sleep(4000);
       continue;
     }
