@@ -275,6 +275,24 @@ $('toggleAnswer').addEventListener('click',async()=>{
   catch(error){$('message').textContent=error.message;}
   finally{$('toggleAnswer').disabled=false;}
 });
+$('startConsole').addEventListener('click',async()=>{
+  $('message').textContent='正在启动本机控制台…';
+  let tabId=null;
+  try {
+    const tab=await chrome.tabs.create({url:'chaoxing-agent://start'});
+    tabId=tab?.id ?? null;
+  } catch (error) {
+    $('message').textContent='无法调用启动协议；先在仓库里运行 dev\\install-protocol.ps1';
+    return;
+  }
+  let started=false;
+  for (let i=0;i<10;i++){
+    await new Promise(resolve=>setTimeout(resolve,1500));
+    try { await control('/status'); started=true; break; } catch { /* 继续等 */ }
+  }
+  if (tabId!==null) { try { await chrome.tabs.remove(tabId); } catch {} }
+  $('message').textContent = started ? '控制台已启动' : '还没起来，看看是否注册了 chaoxing-agent 协议';
+});
 $('processOptional').addEventListener('change',async()=>{
   try {
     const result = await control('/control',{action:'options',processOptional:$('processOptional').checked});

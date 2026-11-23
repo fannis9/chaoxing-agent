@@ -24,6 +24,12 @@ chaoxing-console.mjs（8788）
 
 注意：这类内容平台不会标记完成，agent 只处理一遍就前进，不会反复重播。
 
+## 启动控制台（不用 PowerShell）
+
+- **开机自动**：计划任务 `ChaoxingPageBridgeConsole` 在登录时启动，平时不用管；
+- **手动启动**：侧栏「连接状态 → 启动本机控制台」按钮，走 `chaoxing-agent://` 协议（首次点会问一次是否允许）；
+- 协议只需注册一次：`powershell -File dev\install-protocol.ps1`（写 HKCU，不需要管理员）。
+
 ## 首次安装
 
 1. **填配置**：把 `.env.example` 复制成 `.env`，填模型与密钥。
